@@ -17,17 +17,17 @@ const firebaseConfigRocio = {
 
 // Configuración para TusPedidos (App Universal)
 const firebaseConfigUniversal = {
-  apiKey: "AIzaSyAAK3mls1uuAO5dF6brx_tqIehwRKzNojc",
-  authDomain: "tuspedidosdb.firebaseapp.com",
-  projectId: "tuspedidosdb",
-  storageBucket: "tuspedidosdb.firebasestorage.app",
-  messagingSenderId: "234025684198",
-  appId: "1:234025684198:web:65d225990b6df5cab03f27",
-  measurementId: "G-QPDCMMD9LK"
+  apiKey: "AIzaSyCy5nvRGy1JPcLWpwnppw85a40l9Aowt9g",
+  authDomain: "universalydedicadastuspedidos.firebaseapp.com",
+  projectId: "universalydedicadastuspedidos",
+  storageBucket: "universalydedicadastuspedidos.firebasestorage.app",
+  messagingSenderId: "329137168324",
+  appId: "1:329137168324:web:2329c2039c3481b61b0e91",
+  measurementId: "G-DJ5MCKN8SN"
 };
 
 // Determinamos qué variante de la app se está ejecutando
-const variant = Constants.expoConfig?.extra?.appVariant || 'rocio';
+const variant = Constants.expoConfig?.extra?.appVariant || 'universal';
 
 // Elegimos la configuración de Firebase correspondiente
 const firebaseConfig = variant === 'universal' ? firebaseConfigUniversal : firebaseConfigRocio;

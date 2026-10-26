@@ -2,7 +2,8 @@ const { ExpoConfig } = require('expo/config');
 const fs = require('fs');
 const path = require('path');
 
-let variant = process.env.APP_VARIANT || 'rocio';
+// Por defecto para este repositorio es 'universal'
+let variant = process.env.APP_VARIANT || 'universal';
 try {
   const envPath = path.resolve(__dirname, '.env');
   if (fs.existsSync(envPath)) {

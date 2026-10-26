@@ -7,7 +7,11 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "build": "expo export -p web --output-dir dist"
+    "web:universal": "cross-env APP_VARIANT=universal expo start --web --port 8081",
+    "web:dedicada": "cross-env APP_VARIANT=rocio expo start --web --port 8082",
+    "build": "expo export -p web --output-dir dist",
+    "build:universal": "cross-env APP_VARIANT=universal expo export -p web --output-dir dist",
+    "build:dedicada": "cross-env APP_VARIANT=rocio expo export -p web --output-dir dist"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -47,6 +51,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "cross-env": "^10.1.0",
     "react-test-renderer": "19.1.0",
     "typescript": "~5.9.2"
   },
