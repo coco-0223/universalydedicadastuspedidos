@@ -1,0 +1,35 @@
+{
+  "cli": {
+    "version": ">= 5.9.1"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+    "rocio": {
+      "extends": "preview",
+      "channel": "rocio",
+      "env": {
+        "APP_VARIANT": "rocio"
+      }
+    },
+    "rocio-prod": {
+      "channel": "production",
+      "developmentClient": false,
+      "env": {
+        "APP_VARIANT": "rocio"
+      }
+    },
+    "production": {}
+  },
+  "submit": {
+    "production": {}
+  }
+}
