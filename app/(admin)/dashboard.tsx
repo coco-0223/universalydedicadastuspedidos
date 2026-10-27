@@ -18,6 +18,7 @@ interface BusinessRowData {
     isActive: boolean;
     status?: 'active' | 'trial';
     trialExpiresAt?: string;
+    planPrice?: number;
 }
 
 interface BlockedAttempt {
@@ -53,6 +54,35 @@ export default function AdminDashboardScreen() {
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
     
+    const handleUpdatePlanPrice = async (bId: string, bName: string, currentPrice?: number) => {
+        let inputPrice: string | null = null;
+        if (Platform.OS === 'web') {
+            inputPrice = prompt(`Modificar tarifa mensual para ${bName}:`, (currentPrice || 9000).toString());
+        }
+        if (!inputPrice) return;
+
+        const newPrice = parseInt(inputPrice.replace(/[^0-9]/g, ''), 10);
+        if (isNaN(newPrice) || newPrice <= 0) {
+            if (Platform.OS === 'web') alert('Por favor ingresá un monto numérico válido.');
+            return;
+        }
+
+        try {
+            setLoading(true);
+            const busRef = doc(db, 'businesses', bId);
+            await updateDoc(busRef, {
+                'profile.planPrice': newPrice
+            });
+            setBusinesses(prev => prev.map(b => b.id === bId ? { ...b, planPrice: newPrice } : b));
+            const msg = `Tarifa de ${bName} actualizada a $${newPrice.toLocaleString()}/mes.`;
+            if (Platform.OS === 'web') alert(msg);
+        } catch (e) {
+            console.error("Error updating plan price:", e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     const handleExtendTrial = async (bId: string, days: number, bName: string) => {
         try {
             setLoading(true);
@@ -234,7 +264,8 @@ export default function AdminDashboardScreen() {
                     categories,
                     isActive: bData.isActive !== false,
                     status: bData.profile?.status || 'active',
-                    trialExpiresAt: bData.profile?.trialExpiresAt
+                    trialExpiresAt: bData.profile?.trialExpiresAt,
+                    planPrice: bData.profile?.planPrice || 9000
                 });
             }));
 
@@ -625,6 +656,15 @@ export default function AdminDashboardScreen() {
                                             ⭐ Activo Permanente
                                         </Text>
                                     )}
+                                    <Pressable 
+                                        style={{ marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                                        onPress={() => handleUpdatePlanPrice(b.id, b.name, b.planPrice)}
+                                    >
+                                        <FontAwesome name="tag" size={10} color="#38bdf8" />
+                                        <Text style={{ fontSize: 11, color: '#38bdf8', fontWeight: 'bold', textDecorationLine: 'underline' }}>
+                                            Tarifa: ${(b.planPrice || 9000).toLocaleString()}/mes (editar)
+                                        </Text>
+                                    </Pressable>
                                 </View>
                                 <Text style={[styles.tdText, { flex: 2, color: '#94a3b8' }]}>{b.email}</Text>
                                 <Text style={[styles.tdText, { flex: 1, textAlign: 'center' }]}>{b.branchesCount}</Text>

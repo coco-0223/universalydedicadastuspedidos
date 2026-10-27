@@ -13,13 +13,27 @@ export default function IniciarDemoScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
 
-    // Códigos de campaña opacos (para que el precio no sea visible en la URL)
-    // fn26 o fundador = $9.000 (por defecto)
-    // vp26 o vip o pro = $20.000
+    // Códigos de campaña opacos y decodificador automático de precio:
+    // 1. Códigos estándar: 'vp26', 'vip', 'pro' => 20000. Por defecto => 9000.
+    // 2. Códigos automáticos con prefijo 'k' (ej. 'k12' = 12.000, 'k15' = 15.000, 'k18' = 18.000, 'k25' = 25.000):
+    //    Totalmente transparente para el cliente (parece un identificador de campaña) pero dinámico para vos.
     const promoCode = (params.c || params.promo || params.plan || '').toString().toLowerCase();
-    const isProPlan = promoCode === 'vp26' || promoCode === 'vip' || promoCode === 'pro';
-    const planPrice = isProPlan ? 20000 : 9000;
-    const originalPrice = isProPlan ? 35000 : 25000;
+
+    let planPrice = 9000;
+    if (promoCode === 'vp26' || promoCode === 'vip' || promoCode === 'pro') {
+        planPrice = 20000;
+    } else {
+        const kMatch = promoCode.match(/^k(\d+)$/);
+        if (kMatch) {
+            const parsedK = parseInt(kMatch[1], 10);
+            if (!isNaN(parsedK) && parsedK > 0) {
+                planPrice = parsedK * 1000; // ej: k14 => 14000
+            }
+        }
+    }
+
+    const isProPlan = planPrice >= 20000;
+    const originalPrice = Math.round(planPrice * 1.8 / 1000) * 1000; // Precio tachado automático con descuento visible
 
     const { loadBusinessById, setUser } = useAppContext();
 
