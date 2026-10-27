@@ -1,15 +1,21 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, addDoc } from 'firebase/firestore';
+import { FontAwesome } from '@expo/vector-icons';
 import { app } from '../src/config/firebase';
 import { useAppContext } from '../src/context/AppContext';
 import { BusinessProfile } from '../src/types';
 
 export default function IniciarDemoScreen() {
     const router = useRouter();
+    const params = useLocalSearchParams();
+    const isProPlan = params.plan === 'pro' || params.promo === 'pro' || params.p === '20';
+    const planPrice = isProPlan ? 20000 : 9000;
+    const originalPrice = isProPlan ? 35000 : 25000;
+
     const { loadBusinessById, setUser } = useAppContext();
     const [businessName, setBusinessName] = useState('');
     const [username, setUsername] = useState('');
@@ -128,6 +134,8 @@ export default function IniciarDemoScreen() {
                 primaryColor: '#0f172a',
                 status: 'trial',
                 trialExpiresAt: expiresAt.toISOString(),
+                planPrice: planPrice,
+                promoTag: isProPlan ? 'pro' : 'founder',
                 onboardingCompleted: false
             };
 
@@ -179,6 +187,24 @@ export default function IniciarDemoScreen() {
     return (
         <View style={styles.container}>
             <View style={styles.card}>
+                {/* Banner FOMO con Precio Dinámico */}
+                <View style={{ backgroundColor: isProPlan ? '#4338ca' : '#b45309', padding: 12, borderRadius: 10, marginBottom: 18 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 4 }}>
+                        <FontAwesome name="fire" size={16} color="#fbbf24" style={{ marginRight: 6 }} />
+                        <Text style={{ color: '#fff', fontWeight: '900', fontSize: 13, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                            {isProPlan ? 'Promoción Especial Pro' : 'Tarifa Fundador • Solo 4 Cupos'}
+                        </Text>
+                    </View>
+                    <Text style={{ color: '#fef08a', textAlign: 'center', fontWeight: 'bold', fontSize: 15 }}>
+                        Congelá ${planPrice.toLocaleString()}/mes <Text style={{ textDecorationLine: 'line-through', color: '#fed7aa', fontSize: 12 }}>${originalPrice.toLocaleString()}</Text>
+                    </Text>
+                    <Text style={{ color: '#f8fafc', textAlign: 'center', fontSize: 11, marginTop: 3 }}>
+                        {isProPlan 
+                            ? 'Incluye catálogo web y soporte prioritario. 7 días gratis para probar.'
+                            : 'Cupo reservado automáticamente durante tus 7 días de prueba.'}
+                    </Text>
+                </View>
+
                 <Text style={styles.title}>Empezá tu Prueba Gratis</Text>
                 <Text style={styles.subtitle}>Creá tu catálogo digital en 10 segundos y probalo sin compromiso durante 7 días.</Text>
 

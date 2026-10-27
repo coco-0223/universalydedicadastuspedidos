@@ -58,6 +58,8 @@ export interface BusinessProfile {
     isActive?: boolean; // Toggle for superadmin to disable business
     status?: 'active' | 'trial';
     trialExpiresAt?: string; // ISO string
+    planPrice?: number; // Precio asignado según la promo (ej. 9000 o 20000)
+    promoTag?: string; // Etiqueta de la promo (ej. 'founder' o 'pro')
 }
 
 export interface BusinessData {

@@ -962,6 +962,28 @@ export default function BusinessDashboardScreen() {
 
     return (
         <View style={styles.container}>
+            {businessProfile?.status === 'trial' && (
+                <View style={{ backgroundColor: '#fffbeb', borderBottomWidth: 1, borderBottomColor: '#fde68a', paddingVertical: 10, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 260 }}>
+                        <FontAwesome name="lock" size={16} color="#d97706" />
+                        <Text style={{ color: '#92400e', fontSize: 13 }}>
+                            <Text style={{ fontWeight: 'bold' }}>Tarifa congelada a ${(businessProfile.planPrice || 9000).toLocaleString()}/mes</Text> durante tus 7 días de prueba. ¡Asegurá tu cupo antes de que venza!
+                        </Text>
+                    </View>
+                    <Pressable 
+                        style={{ backgroundColor: '#10b981', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        onPress={() => {
+                            const wspMsg = encodeURIComponent(`Hola! Quiero asegurar mi tarifa congelada de $${(businessProfile.planPrice || 9000).toLocaleString()}/mes para mi negocio ${businessProfile.name || ''} (ID: ${businessProfile.id}).`);
+                            if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                                window.open(`https://wa.me/5493512345678?text=${wspMsg}`, '_blank');
+                            }
+                        }}
+                    >
+                        <FontAwesome name="whatsapp" size={14} color="#fff" />
+                        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 12 }}>Asegurar mi Precio</Text>
+                    </Pressable>
+                </View>
+            )}
             <View style={styles.headerArea}>
                 <View>
                     <Text style={styles.title}>Panel de Preparación</Text>
