@@ -78,12 +78,22 @@ export const DEFAULT_ROCIO_ALIASES: Record<string, string> = {
 };
 
 export const stripQuantitiesFromName = (name: string): string => {
-    return normalizeName(name)
-        .replace(/\b(\d+)\s*(kg|kilos|kilo|u|unidades|unidad|piezas|pieza)\b/gi, '')
-        .replace(/\bx\s*\d+\b/gi, '')
-        .replace(/\bx\s*(kg|kilos|kilo|u|unidades)\b/gi, '')
+    return name
+        .replace(/\b(\d+(\.\d+)?)\s*(kg|kilos|kilo|gr|gramos|u|unidades|unidad|piezas|pieza)\b/gi, '')
+        .replace(/\bx\s*(\d+(\.\d+)?)\s*(kg|kilos|kilo|gr|gramos|u|unidades|unidad)?\b/gi, '')
+        .replace(/\b(1|2|3|4|5|10)\s*k\b/gi, '')
         .replace(/\s+/g, ' ')
         .trim();
+};
+
+/**
+ * Limpia y formatea el nombre visible de un producto (Capitalizado y sin pesos pegados)
+ */
+export const cleanDisplayProductName = (name: string): string => {
+    const stripped = stripQuantitiesFromName(name);
+    if (!stripped) return name.trim();
+    // Capitalizar primera letra de cada palabra clave
+    return stripped.charAt(0).toUpperCase() + stripped.slice(1);
 };
 
 /**
@@ -204,4 +214,90 @@ export const parseRocioExcelRows = (rows: any[][], options: ExcelParseOptions = 
     // NOTA: CONGELADOS BAJALA (Cols V-W / 21-22) y columnas AJ a AS (35-44) son ignoradas por las reglas del negocio.
 
     return parsedItems;
+};
+
+/**
+ * PARSER UNIVERSAL HORIZONTAL:
+ * Estructura de bloques de 3 columnas + 1 vacía de separación:
+ * [Producto | Cantidad | Precio] | [separador] | [Producto | Cantidad | Precio]
+ * La Fila 0 (o encabezado) define la Categoría para cada bloque.
+ * Detecta duplicados para generar reglas de descuento por cantidad.
+ */
+export const parseUniversalHorizontalExcel = (rows: any[][]): ParsedExcelItem[] => {
+    if (!rows || rows.length < 2) return [];
+
+    const parsedItems: ParsedExcelItem[] = [];
+    const maxCols = Math.max(...rows.map(r => (r ? r.length : 0)));
+
+    // Identificar bloques (cada bloque suele ocupar 3 columnas de datos)
+    for (let c = 0; c < maxCols; c++) {
+        const headerCat = (rows[0]?.[c] || '').toString().trim();
+        // Si hay un título en la Fila 0 (ej. 'Vacuno', 'Solo Efectivo', 'Pollo')
+        if (headerCat) {
+            const prodCol = c;
+            const qtyCol = c + 1;
+            const priceCol = c + 2;
+
+            const isCashOfferBlock = normalizeName(headerCat).includes('efectivo') || normalizeName(headerCat).includes('oferta');
+            const categoryName = isCashOfferBlock ? 'Ofertas del Día' : headerCat;
+
+            for (let r = 1; r < rows.length; r++) {
+                const row = rows[r];
+                if (!row) continue;
+
+                const rawProdName = (row[prodCol] || '').toString().trim();
+                const rawQty = row[qtyCol];
+                const rawPrice = row[priceCol];
+
+                if (!rawProdName || rawProdName.length < 2) continue;
+
+                const price = parseExcelPrice(rawPrice);
+                if (price <= 0) continue;
+
+                // Extraer cantidad (puede venir como '1 kg', '2', '2 kg', '1 u')
+                let qtyNum = 1;
+                let unitType: 'kg' | 'unit' = 'kg';
+
+                if (rawQty) {
+                    const strQty = rawQty.toString().toLowerCase();
+                    const matchNum = strQty.match(/(\d+(\.\d+)?)/);
+                    if (matchNum) qtyNum = parseFloat(matchNum[1]);
+                    if (strQty.includes('u') || strQty.includes('unidad') || strQty.includes('pieza')) {
+                        unitType = 'unit';
+                    }
+                }
+
+                // Limpieza a prueba de tontos: si el usuario puso "Asado 1kg", lo limpia a "Asado"
+                const cleanName = cleanDisplayProductName(rawProdName);
+
+                parsedItems.push({
+                    rawName: cleanName,
+                    category: categoryName,
+                    price: price,
+                    unitType: unitType,
+                    dailyOfferMinQty: qtyNum,
+                    isDailyOffer: isCashOfferBlock,
+                    dailyOfferPrice: isCashOfferBlock ? price : undefined
+                });
+            }
+
+            // Saltamos las columnas de este bloque (prod, qty, price) para buscar el siguiente
+            c += 2;
+        }
+    }
+
+    return parsedItems;
+};
+
+/**
+ * Generador de Plantilla Universal Horizontal en formato Excel (.xlsx)
+ */
+export const generateUniversalTemplateAoa = () => {
+    return [
+        ['Solo Efectivo', 'Cantidad', 'Precio', '', 'Vacuno', 'Cantidad', 'Precio', '', 'Pollo', 'Cantidad', 'Precio', '', 'Cerdo', 'Cantidad', 'Precio'],
+        ['Asado', '1 kg', 8500, '', 'Vacío', '1 kg', 9200, '', 'Suprema', '1 kg', 6000, '', 'Costillita de Cerdo', '1 kg', 7500],
+        ['Asado (Promo 2kg)', '2 kg', 8000, '', 'Costilla', '1 kg', 7800, '', 'Pata y Muslo', '3 kg', 5200, '', 'Bondiola', '1 kg', 8900],
+        ['Milanesa de Carne', '1 kg', 7900, '', 'Nalga', '1 kg', 8900, '', 'Alitas', '1 kg', 3200, '', 'Matambre de Cerdo', '1 kg', 9800],
+        ['Milanesa de Carne', '2 kg', 7400, '', 'Bola de Lomo', '1 kg', 8500, '', '', '', '', '', 'Chorizo Puro Cerdo', '1 kg', 6500]
+    ];
 };

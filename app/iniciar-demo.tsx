@@ -12,13 +12,23 @@ import { BusinessProfile } from '../src/types';
 export default function IniciarDemoScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
-    const isProPlan = params.plan === 'pro' || params.promo === 'pro' || params.p === '20';
+
+    // Códigos de campaña opacos (para que el precio no sea visible en la URL)
+    // fn26 o fundador = $9.000 (por defecto)
+    // vp26 o vip o pro = $20.000
+    const promoCode = (params.c || params.promo || params.plan || '').toString().toLowerCase();
+    const isProPlan = promoCode === 'vp26' || promoCode === 'vip' || promoCode === 'pro';
     const planPrice = isProPlan ? 20000 : 9000;
     const originalPrice = isProPlan ? 35000 : 25000;
 
     const { loadBusinessById, setUser } = useAppContext();
-    const [businessName, setBusinessName] = useState('');
-    const [username, setUsername] = useState('');
+
+    // Precarga automática desde los parámetros del link de WhatsApp (b=usuario, name=Nombre)
+    const initialName = (params.name || params.n || '').toString();
+    const initialUsername = (params.b || params.u || '').toString();
+
+    const [businessName, setBusinessName] = useState(initialName);
+    const [username, setUsername] = useState(initialUsername);
     
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
