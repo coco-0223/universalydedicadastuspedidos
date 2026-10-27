@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, addDoc } from 'firebase/firestore';
 import { app } from '../src/config/firebase';
@@ -15,6 +16,16 @@ export default function IniciarDemoScreen() {
     
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
+
+    const getClientIp = async (): Promise<string | null> => {
+        try {
+            const res = await fetch('https://api.ipify.org?format=json');
+            const data = await res.json();
+            return data.ip || null;
+        } catch (e) {
+            return null;
+        }
+    };
 
     const handleCreateDemo = async () => {
         if (!businessName.trim() || !username.trim()) {
@@ -32,8 +43,39 @@ export default function IniciarDemoScreen() {
         setError('');
 
         try {
+            // Capa 2: Huella local (AsyncStorage / LocalStorage)
+            const localTrialUsed = await AsyncStorage.getItem('tp_trial_created');
+            if (localTrialUsed) {
+                setError('Ya se ha creado un período de prueba desde este dispositivo. Si deseas extender o activar tu plan, comunícate con soporte.');
+                setLoading(false);
+                return;
+            }
+
             const auth = getAuth(app);
             const db = getFirestore(app);
+
+            // Capa 1: Validación por IP
+            const clientIp = await getClientIp();
+            if (clientIp) {
+                // Las IPs con puntos se pueden usar como ID sanitizado
+                const ipDocId = clientIp.replace(/[^a-zA-Z0-9_-]/g, '_');
+                const ipRef = doc(db, 'trial_ips', ipDocId);
+                const ipSnap = await getDoc(ipRef);
+
+                if (ipSnap.exists()) {
+                    const ipData = ipSnap.data();
+                    const lastCreated = ipData?.createdAt ? new Date(ipData.createdAt) : null;
+                    // Límite de 30 días entre pruebas por IP
+                    if (lastCreated) {
+                        const daysDiff = (Date.now() - lastCreated.getTime()) / (1000 * 60 * 60 * 24);
+                        if (daysDiff < 30) {
+                            setError('Ya se ha registrado una prueba gratuita desde esta red recientemente. Escribinos para activar tu cuenta.');
+                            setLoading(false);
+                            return;
+                        }
+                    }
+                }
+            }
             
             // Check if slug exists
             const businessRef = doc(db, 'businesses', safeUsername);
@@ -81,6 +123,17 @@ export default function IniciarDemoScreen() {
                     }
                 }
             });
+
+            // Guardar registro de IP y huella digital
+            if (clientIp) {
+                const ipDocId = clientIp.replace(/[^a-zA-Z0-9_-]/g, '_');
+                await setDoc(doc(db, 'trial_ips', ipDocId), {
+                    ip: clientIp,
+                    businessId: safeUsername,
+                    createdAt: new Date().toISOString()
+                }, { merge: true });
+            }
+            await AsyncStorage.setItem('tp_trial_created', 'true');
 
             await loadBusinessById(safeUsername);
             setUser({ id: uid, email: demoEmail, role: 'business', name: '', surname: '', address: '' });
