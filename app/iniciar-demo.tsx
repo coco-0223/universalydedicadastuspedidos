@@ -46,6 +46,18 @@ export default function IniciarDemoScreen() {
             // Capa 2: Huella local (AsyncStorage / LocalStorage)
             const localTrialUsed = await AsyncStorage.getItem('tp_trial_created');
             if (localTrialUsed) {
+                // Registrar intento bloqueado para el SuperAdmin
+                try {
+                    const db = getFirestore(app);
+                    await addDoc(collection(db, 'blocked_attempts'), {
+                        businessName: businessName.trim(),
+                        username: safeUsername,
+                        reason: 'Dispositivo ya utilizó prueba gratuita (Local)',
+                        type: 'device',
+                        createdAt: new Date().toISOString()
+                    });
+                } catch (e) {}
+
                 setError('Ya se ha creado un período de prueba desde este dispositivo. Si deseas extender o activar tu plan, comunícate con soporte.');
                 setLoading(false);
                 return;
@@ -69,6 +81,19 @@ export default function IniciarDemoScreen() {
                     if (lastCreated) {
                         const daysDiff = (Date.now() - lastCreated.getTime()) / (1000 * 60 * 60 * 24);
                         if (daysDiff < 30) {
+                            // Registrar intento bloqueado para el SuperAdmin
+                            try {
+                                await addDoc(collection(db, 'blocked_attempts'), {
+                                    businessName: businessName.trim(),
+                                    username: safeUsername,
+                                    ip: clientIp,
+                                    previousBusinessId: ipData.businessId || 'desconocido',
+                                    reason: `Misma IP (${clientIp}) que negocio previo: ${ipData.businessId || 'desconocido'}`,
+                                    type: 'ip',
+                                    createdAt: new Date().toISOString()
+                                });
+                            } catch (e) {}
+
                             setError('Ya se ha registrado una prueba gratuita desde esta red recientemente. Escribinos para activar tu cuenta.');
                             setLoading(false);
                             return;

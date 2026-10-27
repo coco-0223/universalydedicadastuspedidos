@@ -16,6 +16,19 @@ interface BusinessRowData {
     productsCount: number;
     categories: string[];
     isActive: boolean;
+    status?: 'active' | 'trial';
+    trialExpiresAt?: string;
+}
+
+interface BlockedAttempt {
+    id: string;
+    businessName: string;
+    username: string;
+    reason: string;
+    type: 'ip' | 'device';
+    ip?: string;
+    previousBusinessId?: string;
+    createdAt: string;
 }
 
 interface AdminRequest {
@@ -35,10 +48,87 @@ export default function AdminDashboardScreen() {
     const [loading, setLoading] = useState(true);
     const [businesses, setBusinesses] = useState<BusinessRowData[]>([]);
     const [requests, setRequests] = useState<AdminRequest[]>([]);
+    const [blockedAttempts, setBlockedAttempts] = useState<BlockedAttempt[]>([]);
     const [sortBy, setSortBy] = useState<keyof BusinessRowData>('name');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
     
+    const handleExtendTrial = async (bId: string, days: number, bName: string) => {
+        try {
+            setLoading(true);
+            const busRef = doc(db, 'businesses', bId);
+            const busSnap = await getDoc(busRef);
+            if (!busSnap.exists()) return;
+
+            const currentData = busSnap.data();
+            const currentExpires = currentData.profile?.trialExpiresAt ? new Date(currentData.profile.trialExpiresAt) : new Date();
+            const baseDate = currentExpires.getTime() > Date.now() ? currentExpires : new Date();
+            baseDate.setDate(baseDate.getDate() + days);
+
+            await updateDoc(busRef, {
+                'profile.status': 'trial',
+                'profile.trialExpiresAt': baseDate.toISOString(),
+                isActive: true
+            });
+
+            setBusinesses(prev => prev.map(b => b.id === bId ? {
+                ...b,
+                status: 'trial',
+                trialExpiresAt: baseDate.toISOString(),
+                isActive: true
+            } : b));
+
+            const msg = `Se extendió la prueba de ${bName} por ${days} días (Vence: ${baseDate.toLocaleDateString()}).`;
+            if (Platform.OS === 'web') alert(msg);
+            else Alert.alert('Éxito', msg);
+        } catch (e) {
+            console.error("Error extending trial:", e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleActivatePermanent = async (bId: string, bName: string) => {
+        if (Platform.OS === 'web') {
+            if (!confirm(`¿Activar a ${bName} de forma permanente como cliente activo?`)) return;
+        }
+        try {
+            setLoading(true);
+            const busRef = doc(db, 'businesses', bId);
+            await updateDoc(busRef, {
+                'profile.status': 'active',
+                isActive: true
+            });
+            setBusinesses(prev => prev.map(b => b.id === bId ? { ...b, status: 'active', isActive: true } : b));
+            const msg = `${bName} ahora está ACTIVO PERMANENTE.`;
+            if (Platform.OS === 'web') alert(msg);
+            else Alert.alert('Éxito', msg);
+        } catch (e) {
+            console.error("Error activating permanent:", e);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteBlockedAttempt = async (attemptId: string) => {
+        try {
+            await deleteDoc(doc(db, 'blocked_attempts', attemptId));
+            setBlockedAttempts(prev => prev.filter(a => a.id !== attemptId));
+        } catch (e) {}
+    };
+
+    const handleUnblockIp = async (ip: string, attemptId: string) => {
+        try {
+            const ipDocId = ip.replace(/[^a-zA-Z0-9_-]/g, '_');
+            await deleteDoc(doc(db, 'trial_ips', ipDocId));
+            await deleteDoc(doc(db, 'blocked_attempts', attemptId));
+            setBlockedAttempts(prev => prev.filter(a => a.id !== attemptId));
+            const msg = `Se desbloqueó la IP ${ip}. Ya puede solicitar una nueva prueba.`;
+            if (Platform.OS === 'web') alert(msg);
+            else Alert.alert('Éxito', msg);
+        } catch (e) {}
+    };
+
     const handleResetOnboarding = async (bId: string, bName: string) => {
         if (Platform.OS === 'web') {
             if (!confirm(`¿Estás seguro de reiniciar el Onboarding para ${bName}? Esto borrará su catálogo actual.`)) return;
@@ -131,6 +221,7 @@ export default function AdminDashboardScreen() {
                     console.warn(`Error loading catalog for business ${bId}:`, err);
                 }
 
+                const bData = bDoc.data();
                 businessList.push({
                     id: bId,
                     name,
@@ -141,7 +232,9 @@ export default function AdminDashboardScreen() {
                     totalSales,
                     productsCount,
                     categories,
-                    isActive: bDoc.data().isActive !== false
+                    isActive: bData.isActive !== false,
+                    status: bData.profile?.status || 'active',
+                    trialExpiresAt: bData.profile?.trialExpiresAt
                 });
             }));
 
@@ -155,6 +248,18 @@ export default function AdminDashboardScreen() {
             } as AdminRequest)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
             setRequests(reqList);
+
+            // 4. Fetch Blocked Attempts
+            try {
+                const blockedSnap = await getDocs(collection(db, 'blocked_attempts'));
+                const blockedList: BlockedAttempt[] = blockedSnap.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                } as BlockedAttempt)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                setBlockedAttempts(blockedList);
+            } catch (err) {
+                console.warn("Error fetching blocked attempts:", err);
+            }
 
         } catch (error) {
             console.error("Error fetching admin dashboard data:", error);
@@ -369,6 +474,55 @@ export default function AdminDashboardScreen() {
                                             {req.status === 'completed' ? 'Reabrir' : 'Completar'}
                                         </Text>
                                     </Pressable>
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                </View>
+            )}
+
+            {/* Blocked Attempts Section */}
+            {blockedAttempts.length > 0 && (
+                <View style={[styles.sectionCard, { borderColor: '#ef4444', borderWidth: 1 }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+                        <FontAwesome name="shield" size={20} color="#ef4444" style={{ marginRight: 10 }} />
+                        <Text style={[styles.sectionTitle, { color: '#f87171', marginBottom: 0 }]}>
+                            Intentos de Registro Bloqueados ({blockedAttempts.length})
+                        </Text>
+                    </View>
+                    <View style={styles.requestsList}>
+                        {blockedAttempts.map((att) => (
+                            <View key={att.id} style={[styles.requestRow, { backgroundColor: '#1e1b4b', borderLeftColor: '#ef4444', borderLeftWidth: 4 }]}>
+                                <View style={styles.reqDetails}>
+                                    <Text style={[styles.reqBusinessName, { color: '#fff' }]}>{att.businessName} (usuario: {att.username})</Text>
+                                    <Text style={[styles.reqBusinessInfo, { color: '#fca5a5', fontWeight: 'bold' }]}>
+                                        Motivo: {att.reason}
+                                    </Text>
+                                    {att.ip && <Text style={styles.reqBusinessInfo}>IP: {att.ip}</Text>}
+                                    <Text style={styles.reqDate}>{new Date(att.createdAt).toLocaleString()}</Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                                    {att.ip && (
+                                        <Pressable 
+                                            style={{ backgroundColor: '#10b981', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
+                                            onPress={() => handleUnblockIp(att.ip!, att.id)}
+                                        >
+                                            <Text style={{ color: '#fff', fontSize: 11, fontWeight: 'bold' }}>DESBLOQUEAR IP</Text>
+                                        </Pressable>
+                                    )}
+                                    <Pressable 
+                                        style={{ backgroundColor: '#475569', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6 }}
+                                        onPress={() => handleDeleteBlockedAttempt(att.id)}
+                                    >
+                                        <FontAwesome name="trash" size={14} color="#fff" />
+                                    </Pressable>
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                </View>
+            )}
+                                    </Pressable>
                                     <Pressable 
                                         style={[styles.reqActionBtn, { backgroundColor: '#ef4444' }]}
                                         onPress={() => handleDeleteRequest(req.id)}
@@ -454,6 +608,23 @@ export default function AdminDashboardScreen() {
                                 <View style={{ flex: 2 }}>
                                     <Text style={styles.tdBusinessName}>{b.name}</Text>
                                     <Text style={styles.tdBusinessId}>slug: {b.id}</Text>
+                                    {b.status === 'trial' ? (
+                                        <View style={{ marginTop: 4 }}>
+                                            {b.trialExpiresAt && new Date(b.trialExpiresAt).getTime() > Date.now() ? (
+                                                <Text style={{ fontSize: 10, color: '#f59e0b', fontWeight: 'bold' }}>
+                                                    ⏳ Prueba (vence: {new Date(b.trialExpiresAt).toLocaleDateString()})
+                                                </Text>
+                                            ) : (
+                                                <Text style={{ fontSize: 10, color: '#ef4444', fontWeight: 'bold' }}>
+                                                    ⚠️ Prueba Vencida
+                                                </Text>
+                                            )}
+                                        </View>
+                                    ) : (
+                                        <Text style={{ fontSize: 10, color: '#10b981', fontWeight: 'bold', marginTop: 4 }}>
+                                            ⭐ Activo Permanente
+                                        </Text>
+                                    )}
                                 </View>
                                 <Text style={[styles.tdText, { flex: 2, color: '#94a3b8' }]}>{b.email}</Text>
                                 <Text style={[styles.tdText, { flex: 1, textAlign: 'center' }]}>{b.branchesCount}</Text>
@@ -464,24 +635,36 @@ export default function AdminDashboardScreen() {
                                 </Text>
                                 <Text style={[styles.tdText, { flex: 1, textAlign: 'center' }]}>{b.productsCount}</Text>
                                 
-                                <View style={{ flex: 1.5, flexDirection: 'row', justifyContent: 'center', gap: 5 }}>
+                                <View style={{ flex: 2, flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 5 }}>
                                     <Pressable 
-                                        style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, backgroundColor: '#3b82f6' }}
-                                        onPress={() => handleResetOnboarding(b.id, b.name)}
+                                        style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, backgroundColor: '#f59e0b' }}
+                                        onPress={() => handleExtendTrial(b.id, 7, b.name)}
                                     >
-                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>REINICIAR DEMO</Text>
+                                        <Text style={{ color: '#000', fontSize: 10, fontWeight: 'bold' }}>+7 DÍAS</Text>
                                     </Pressable>
                                     <Pressable 
-                                        style={{ paddingHorizontal: 8, paddingVertical: 5, borderRadius: 6, backgroundColor: '#8b5cf6' }}
+                                        style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, backgroundColor: '#0284c7' }}
+                                        onPress={() => handleExtendTrial(b.id, 30, b.name)}
+                                    >
+                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>+30 DÍAS</Text>
+                                    </Pressable>
+                                    <Pressable 
+                                        style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, backgroundColor: '#10b981' }}
+                                        onPress={() => handleActivatePermanent(b.id, b.name)}
+                                    >
+                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>PERMANENTE</Text>
+                                    </Pressable>
+                                    <Pressable 
+                                        style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, backgroundColor: '#8b5cf6' }}
                                         onPress={() => router.push({ pathname: '/(admin)/business/[id]', params: { id: b.id } } as any)}
                                     >
-                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>GESTIONAR</Text>
+                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>VER</Text>
                                     </Pressable>
                                     <Pressable
-                                        style={{ paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, backgroundColor: b.isActive ? '#10b981' : '#ef4444' }}
+                                        style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5, backgroundColor: b.isActive ? '#ef4444' : '#64748b' }}
                                         onPress={() => handleToggleBusinessStatus(b.id, b.isActive, b.name)}
                                     >
-                                        <Text style={{ color: '#fff', fontSize: 11, fontWeight: 'bold' }}>{b.isActive ? 'ACTIVO' : 'SUSPENDIDO'}</Text>
+                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>{b.isActive ? 'SUSPENDER' : 'HABILITAR'}</Text>
                                     </Pressable>
                                 </View>
 
