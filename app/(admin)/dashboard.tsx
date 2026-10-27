@@ -251,7 +251,6 @@ export default function AdminDashboardScreen() {
                     console.warn(`Error loading catalog for business ${bId}:`, err);
                 }
 
-                const bData = bDoc.data();
                 businessList.push({
                     id: bId,
                     name,
@@ -544,19 +543,6 @@ export default function AdminDashboardScreen() {
                                     <Pressable 
                                         style={{ backgroundColor: '#475569', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6 }}
                                         onPress={() => handleDeleteBlockedAttempt(att.id)}
-                                    >
-                                        <FontAwesome name="trash" size={14} color="#fff" />
-                                    </Pressable>
-                                </View>
-                            </View>
-                        ))}
-                    </View>
-                </View>
-            )}
-                                    </Pressable>
-                                    <Pressable 
-                                        style={[styles.reqActionBtn, { backgroundColor: '#ef4444' }]}
-                                        onPress={() => handleDeleteRequest(req.id)}
                                     >
                                         <FontAwesome name="trash" size={14} color="#fff" />
                                     </Pressable>
