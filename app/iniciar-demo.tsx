@@ -40,9 +40,13 @@ export default function IniciarDemoScreen() {
     // Precarga automática desde los parámetros del link de WhatsApp (b=usuario, name=Nombre)
     const initialName = (params.name || params.n || '').toString();
     const initialUsername = (params.b || params.u || '').toString();
+    const isDirectInvite = Boolean(initialUsername || initialName);
 
     const [businessName, setBusinessName] = useState(initialName);
     const [username, setUsername] = useState(initialUsername);
+    const [ownerPhone, setOwnerPhone] = useState('');
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
     
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -58,14 +62,37 @@ export default function IniciarDemoScreen() {
     };
 
     const handleCreateDemo = async () => {
-        if (!businessName.trim() || !username.trim()) {
-            setError('Por favor completá ambos campos.');
+        if (!businessName.trim()) {
+            setError('Por favor completá el nombre de tu negocio.');
             return;
         }
 
-        const safeUsername = username.toLowerCase().replace(/[^a-z0-9]/g, '');
+        // Si no vino de un enlace directo con usuario asignado, validamos datos orgánicos
+        if (!isDirectInvite) {
+            if (!ownerPhone.trim()) {
+                setError('Por favor ingresá tu número de WhatsApp para contacto.');
+                return;
+            }
+            if (!email.trim() || !email.includes('@')) {
+                setError('Por favor ingresá un correo electrónico válido.');
+                return;
+            }
+            if (!password || password.length < 6) {
+                setError('La contraseña debe tener al menos 6 caracteres.');
+                return;
+            }
+        }
+
+        // Generar o sanitizar slug
+        let rawSlug = username.trim() || businessName.trim();
+        const safeUsername = rawSlug
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]/g, '');
+
         if (safeUsername.length < 3) {
-            setError('El usuario debe tener al menos 3 caracteres y solo letras/números.');
+            setError('El nombre o usuario debe tener al menos 3 letras o números.');
             return;
         }
 
@@ -141,12 +168,26 @@ export default function IniciarDemoScreen() {
                 return;
             }
 
-            const demoEmail = `${safeUsername}@demo.tuspedidos.com`;
-            const demoPassword = 'TusPedidosDemo2026';
+            // Determinar credenciales según si es directo de WhatsApp o registro orgánico
+            const finalAuthEmail = isDirectInvite 
+                ? `${safeUsername}@demo.tuspedidos.com` 
+                : email.trim().toLowerCase();
+            const finalAuthPassword = isDirectInvite 
+                ? 'TusPedidosDemo2026' 
+                : password;
 
             // Create Firebase Auth
-            const userCredential = await createUserWithEmailAndPassword(auth, demoEmail, demoPassword);
+            const userCredential = await createUserWithEmailAndPassword(auth, finalAuthEmail, finalAuthPassword);
             const uid = userCredential.user.uid;
+
+            // Guardar documento del usuario en 'users'
+            await setDoc(doc(db, 'users', uid), {
+                id: uid,
+                email: finalAuthEmail,
+                role: 'business',
+                phone: ownerPhone.trim() || '',
+                createdAt: new Date().toISOString()
+            }, { merge: true });
 
             // Create Business Profile
             const expiresAt = new Date();
@@ -160,6 +201,8 @@ export default function IniciarDemoScreen() {
                 trialExpiresAt: expiresAt.toISOString(),
                 planPrice: planPrice,
                 promoTag: isProPlan ? 'pro' : 'founder',
+                contactPhone: ownerPhone.trim() || undefined,
+                ownerEmail: finalAuthEmail,
                 onboardingCompleted: false
             };
 
@@ -239,7 +282,14 @@ export default function IniciarDemoScreen() {
                     style={styles.input}
                     placeholder="Ej: Carnicería Los Amigos"
                     value={businessName}
-                    onChangeText={setBusinessName}
+                    onChangeText={(val) => {
+                        setBusinessName(val);
+                        if (!isDirectInvite && !username) {
+                            // Sugerir usuario automáticamente basado en el nombre
+                            const suggested = val.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, '');
+                            setUsername(suggested);
+                        }
+                    }}
                 />
 
                 <Text style={styles.label}>Usuario (para tu link)</Text>
@@ -252,16 +302,45 @@ export default function IniciarDemoScreen() {
                 />
                 <Text style={styles.hintText}>Tus clientes entrarán a: tuspedidos.com/?store={username.toLowerCase().replace(/[^a-z0-9]/g, '') || 'tu-usuario'}</Text>
 
-                <Text style={styles.label}>Contraseña</Text>
-                
+                {/* Si viene orgánico de redes/web, pedimos WhatsApp, Email y Contraseña */}
+                {!isDirectInvite && (
+                    <>
+                        <Text style={styles.label}>Tu WhatsApp (para recibir pedidos y contacto)</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Ej: 3512345678"
+                            value={ownerPhone}
+                            onChangeText={setOwnerPhone}
+                            keyboardType="phone-pad"
+                        />
 
+                        <Text style={styles.label}>Correo Electrónico (para tu acceso)</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="tu@email.com"
+                            value={email}
+                            onChangeText={setEmail}
+                            autoCapitalize="none"
+                            keyboardType="email-address"
+                        />
+
+                        <Text style={styles.label}>Contraseña</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="Mínimo 6 caracteres"
+                            value={password}
+                            onChangeText={setPassword}
+                            secureTextEntry
+                        />
+                    </>
+                )}
 
                 <Pressable style={styles.mainBtn} onPress={handleCreateDemo} disabled={loading}>
                     {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.mainBtnText}>Crear mi Demo Ahora</Text>}
                 </Pressable>
 
-                <Pressable style={{ marginTop: 20, alignItems: 'center' }} onPress={() => router.push('/business-auth?demo=true')}>
-                    <Text style={{ color: '#3b82f6', fontWeight: '600' }}>¿Ya tenés un Demo? Ingresá acá</Text>
+                <Pressable style={{ marginTop: 20, alignItems: 'center' }} onPress={() => router.push(isDirectInvite ? '/business-auth?demo=true' : '/business-auth')}>
+                    <Text style={{ color: '#3b82f6', fontWeight: '600' }}>¿Ya tenés cuenta? Ingresá acá</Text>
                 </Pressable>
             </View>
         </View>

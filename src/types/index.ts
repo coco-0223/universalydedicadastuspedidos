@@ -60,6 +60,8 @@ export interface BusinessProfile {
     trialExpiresAt?: string; // ISO string
     planPrice?: number; // Precio asignado según la promo (ej. 9000 o 20000)
     promoTag?: string; // Etiqueta de la promo (ej. 'founder' o 'pro')
+    contactPhone?: string; // WhatsApp de contacto del dueño
+    ownerEmail?: string;
 }
 
 export interface BusinessData {
