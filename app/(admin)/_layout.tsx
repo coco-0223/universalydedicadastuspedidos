@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { Slot, useRouter, usePathname, Redirect } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -11,6 +11,8 @@ export default function AdminLayout() {
     const { user, setUser, isLoading } = useAppContext();
     const router = useRouter();
     const pathname = usePathname();
+    const { width } = useWindowDimensions();
+    const isMobile = width < 768;
 
     const logout = async () => {
         try {
@@ -43,41 +45,57 @@ export default function AdminLayout() {
     ];
 
     return (
-        <View style={styles.container}>
-            {/* Sidebar */}
-            <View style={styles.sidebar}>
-                <View style={styles.logoContainer}>
-                    <FontAwesome name="shield" size={32} color="#3b82f6" />
-                    <Text style={styles.logoText}>SUPER</Text>
+        <View style={[styles.container, isMobile && styles.containerMobile]}>
+            {/* Topbar for Mobile */}
+            {isMobile && (
+                <View style={styles.topbarMobile}>
+                    <View style={styles.topbarBrand}>
+                        <FontAwesome name="shield" size={24} color="#3b82f6" />
+                        <Text style={styles.topbarLogoText}>SUPERADMIN</Text>
+                    </View>
+                    <Pressable style={styles.topbarLogoutBtn} onPress={logout}>
+                        <FontAwesome name="sign-out" size={16} color="#f43f5e" />
+                        <Text style={styles.topbarLogoutText}>Salir</Text>
+                    </Pressable>
                 </View>
+            )}
 
-                <View style={styles.navContainer}>
-                    {navItems.map((item) => {
-                        const isActive = pathname.includes(item.name);
-                        return (
-                            <Pressable
-                                key={item.name}
-                                style={[styles.navItem, isActive && styles.navItemActive]}
-                                onPress={() => router.push(`/(admin)/${item.name}` as any)}
-                            >
-                                <FontAwesome 
-                                    name={item.icon as any} 
-                                    size={20} 
-                                    color={isActive ? '#3b82f6' : '#94a3b8'} 
-                                />
-                                <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
-                                    {item.label}
-                                </Text>
-                            </Pressable>
-                        );
-                    })}
+            {/* Sidebar for Desktop */}
+            {!isMobile && (
+                <View style={styles.sidebar}>
+                    <View style={styles.logoContainer}>
+                        <FontAwesome name="shield" size={32} color="#3b82f6" />
+                        <Text style={styles.logoText}>SUPER</Text>
+                    </View>
+
+                    <View style={styles.navContainer}>
+                        {navItems.map((item) => {
+                            const isActive = pathname.includes(item.name);
+                            return (
+                                <Pressable
+                                    key={item.name}
+                                    style={[styles.navItem, isActive && styles.navItemActive]}
+                                    onPress={() => router.push(`/(admin)/${item.name}` as any)}
+                                >
+                                    <FontAwesome 
+                                        name={item.icon as any} 
+                                        size={20} 
+                                        color={isActive ? '#3b82f6' : '#94a3b8'} 
+                                    />
+                                    <Text style={[styles.navLabel, isActive && styles.navLabelActive]}>
+                                        {item.label}
+                                    </Text>
+                                </Pressable>
+                            );
+                        })}
+                    </View>
+
+                    <Pressable style={styles.logoutBtn} onPress={logout}>
+                        <FontAwesome name="sign-out" size={20} color="#f43f5e" />
+                        <Text style={styles.logoutLabel}>Salir</Text>
+                    </Pressable>
                 </View>
-
-                <Pressable style={styles.logoutBtn} onPress={logout}>
-                    <FontAwesome name="sign-out" size={20} color="#f43f5e" />
-                    <Text style={styles.logoutLabel}>Salir</Text>
-                </Pressable>
-            </View>
+            )}
 
             {/* Main Content */}
             <View style={styles.mainContent}>
@@ -92,6 +110,47 @@ const styles = StyleSheet.create({
         flex: 1,
         flexDirection: 'row',
         backgroundColor: '#0f172a', // Sleek dark mode background
+    },
+    containerMobile: {
+        flexDirection: 'column',
+    },
+    topbarMobile: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        backgroundColor: '#1e293b',
+        borderBottomWidth: 1,
+        borderBottomColor: '#334155',
+        zIndex: 50,
+    },
+    topbarBrand: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    topbarLogoText: {
+        fontSize: 14,
+        fontWeight: '900',
+        color: '#3b82f6',
+        letterSpacing: 1,
+    },
+    topbarLogoutBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: 'rgba(244, 63, 94, 0.1)',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: 'rgba(244, 63, 94, 0.3)',
+    },
+    topbarLogoutText: {
+        fontSize: 12,
+        fontWeight: '700',
+        color: '#f43f5e',
     },
     sidebar: {
         width: 100,

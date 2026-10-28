@@ -558,146 +558,148 @@ export default function AdminDashboardScreen() {
                 <Text style={styles.sectionTitle}>🏢 Comercios Registrados</Text>
                 <Text style={styles.sectionSubtitle}>Hacé clic en cualquier fila para ver el desglose completo del comercio.</Text>
                 
-                <View style={styles.tableContainer}>
-                    {/* Header */}
-                    <View style={styles.tableHeader}>
-                        <Pressable style={[styles.th, { flex: 2 }]} onPress={() => handleSort('name')}>
-                            <Text style={styles.thText}>Negocio</Text>
-                            {sortBy === 'name' && (
-                                <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
-                            )}
-                        </Pressable>
-                        <Pressable style={[styles.th, { flex: 2 }]} onPress={() => handleSort('email')}>
-                            <Text style={styles.thText}>Email dueño</Text>
-                            {sortBy === 'email' && (
-                                <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
-                            )}
-                        </Pressable>
-                        <Pressable style={[styles.th, { flex: 1, justifyContent: 'center' }]} onPress={() => handleSort('branchesCount')}>
-                            <Text style={[styles.thText, { textAlign: 'center' }]}>Sucursales</Text>
-                            {sortBy === 'branchesCount' && (
-                                <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
-                            )}
-                        </Pressable>
-                        <Pressable style={[styles.th, { flex: 1, justifyContent: 'center' }]} onPress={() => handleSort('clientsCount')}>
-                            <Text style={[styles.thText, { textAlign: 'center' }]}>Clientes</Text>
-                            {sortBy === 'clientsCount' && (
-                                <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
-                            )}
-                        </Pressable>
-                        <Pressable style={[styles.th, { flex: 1, justifyContent: 'center' }]} onPress={() => handleSort('ordersCount')}>
-                            <Text style={[styles.thText, { textAlign: 'center' }]}>Pedidos</Text>
-                            {sortBy === 'ordersCount' && (
-                                <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
-                            )}
-                        </Pressable>
-                        <Pressable style={[styles.th, { flex: 1.2, justifyContent: 'flex-end' }]} onPress={() => handleSort('totalSales')}>
-                            <Text style={[styles.thText, { textAlign: 'right' }]}>Ventas</Text>
-                            {sortBy === 'totalSales' && (
-                                <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
-                            )}
-                        </Pressable>
-                        <Pressable style={[styles.th, { flex: 1, justifyContent: 'center' }]} onPress={() => handleSort('productsCount')}>
-                            <Text style={[styles.thText, { textAlign: 'center' }]}>Productos</Text>
-                            {sortBy === 'productsCount' && (
-                                <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
-                            )}
-                        </Pressable>
-                        <View style={[styles.th, { flex: 1, justifyContent: 'center' }]}>
-                            <Text style={[styles.thText, { textAlign: 'center' }]}>Estado</Text>
-                        </View>
-                    </View>
-
-                    {/* Rows */}
-                    {sortedBusinesses.length === 0 ? (
-                        <View style={styles.emptyTable}>
-                            <Text style={styles.emptyTableText}>No hay negocios registrados.</Text>
-                        </View>
-                    ) : (
-                        sortedBusinesses.map((b, index) => (
-                            <View 
-                                key={b.id} 
-                                style={[
-                                    styles.tableRow, 
-                                    index % 2 === 1 && { backgroundColor: '#1e293b' }
-                                ]}
-                            >
-                                <View style={{ flex: 2 }}>
-                                    <Text style={styles.tdBusinessName}>{b.name}</Text>
-                                    <Text style={styles.tdBusinessId}>slug: {b.id}</Text>
-                                    {b.status === 'trial' ? (
-                                        <View style={{ marginTop: 4 }}>
-                                            {b.trialExpiresAt && new Date(b.trialExpiresAt).getTime() > Date.now() ? (
-                                                <Text style={{ fontSize: 10, color: '#f59e0b', fontWeight: 'bold' }}>
-                                                    ⏳ Prueba (vence: {new Date(b.trialExpiresAt).toLocaleDateString()})
-                                                </Text>
-                                            ) : (
-                                                <Text style={{ fontSize: 10, color: '#ef4444', fontWeight: 'bold' }}>
-                                                    ⚠️ Prueba Vencida
-                                                </Text>
-                                            )}
-                                        </View>
-                                    ) : (
-                                        <Text style={{ fontSize: 10, color: '#10b981', fontWeight: 'bold', marginTop: 4 }}>
-                                            ⭐ Activo Permanente
-                                        </Text>
-                                    )}
-                                    <Pressable 
-                                        style={{ marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 4 }}
-                                        onPress={() => handleUpdatePlanPrice(b.id, b.name, b.planPrice)}
-                                    >
-                                        <FontAwesome name="tag" size={10} color="#38bdf8" />
-                                        <Text style={{ fontSize: 11, color: '#38bdf8', fontWeight: 'bold', textDecorationLine: 'underline' }}>
-                                            Tarifa: ${(b.planPrice || 9000).toLocaleString()}/mes (editar)
-                                        </Text>
-                                    </Pressable>
-                                </View>
-                                <Text style={[styles.tdText, { flex: 2, color: '#94a3b8' }]}>{b.email}</Text>
-                                <Text style={[styles.tdText, { flex: 1, textAlign: 'center' }]}>{b.branchesCount}</Text>
-                                <Text style={[styles.tdText, { flex: 1, textAlign: 'center' }]}>{b.clientsCount}</Text>
-                                <Text style={[styles.tdText, { flex: 1, textAlign: 'center' }]}>{b.ordersCount}</Text>
-                                <Text style={[styles.tdText, { flex: 1.2, textAlign: 'right', fontWeight: 'bold', color: '#10b981' }]}>
-                                    ${b.totalSales.toLocaleString()}
-                                </Text>
-                                <Text style={[styles.tdText, { flex: 1, textAlign: 'center' }]}>{b.productsCount}</Text>
-                                
-                                <View style={{ flex: 2, flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 5 }}>
-                                    <Pressable 
-                                        style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, backgroundColor: '#f59e0b' }}
-                                        onPress={() => handleExtendTrial(b.id, 7, b.name)}
-                                    >
-                                        <Text style={{ color: '#000', fontSize: 10, fontWeight: 'bold' }}>+7 DÍAS</Text>
-                                    </Pressable>
-                                    <Pressable 
-                                        style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, backgroundColor: '#0284c7' }}
-                                        onPress={() => handleExtendTrial(b.id, 30, b.name)}
-                                    >
-                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>+30 DÍAS</Text>
-                                    </Pressable>
-                                    <Pressable 
-                                        style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, backgroundColor: '#10b981' }}
-                                        onPress={() => handleActivatePermanent(b.id, b.name)}
-                                    >
-                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>PERMANENTE</Text>
-                                    </Pressable>
-                                    <Pressable 
-                                        style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, backgroundColor: '#8b5cf6' }}
-                                        onPress={() => router.push({ pathname: '/(admin)/business/[id]', params: { id: b.id } } as any)}
-                                    >
-                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>VER</Text>
-                                    </Pressable>
-                                    <Pressable
-                                        style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5, backgroundColor: b.isActive ? '#ef4444' : '#64748b' }}
-                                        onPress={() => handleToggleBusinessStatus(b.id, b.isActive, b.name)}
-                                    >
-                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>{b.isActive ? 'SUSPENDER' : 'HABILITAR'}</Text>
-                                    </Pressable>
-                                </View>
-
+                <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.horizontalScroll}>
+                    <View style={styles.tableContainer}>
+                        {/* Header */}
+                        <View style={styles.tableHeader}>
+                            <Pressable style={[styles.th, { flex: 2, minWidth: 160 }]} onPress={() => handleSort('name')}>
+                                <Text style={styles.thText}>Negocio</Text>
+                                {sortBy === 'name' && (
+                                    <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
+                                )}
+                            </Pressable>
+                            <Pressable style={[styles.th, { flex: 2, minWidth: 160 }]} onPress={() => handleSort('email')}>
+                                <Text style={styles.thText}>Email dueño</Text>
+                                {sortBy === 'email' && (
+                                    <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
+                                )}
+                            </Pressable>
+                            <Pressable style={[styles.th, { flex: 1, minWidth: 80, justifyContent: 'center' }]} onPress={() => handleSort('branchesCount')}>
+                                <Text style={[styles.thText, { textAlign: 'center' }]}>Sucursales</Text>
+                                {sortBy === 'branchesCount' && (
+                                    <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
+                                )}
+                            </Pressable>
+                            <Pressable style={[styles.th, { flex: 1, minWidth: 80, justifyContent: 'center' }]} onPress={() => handleSort('clientsCount')}>
+                                <Text style={[styles.thText, { textAlign: 'center' }]}>Clientes</Text>
+                                {sortBy === 'clientsCount' && (
+                                    <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
+                                )}
+                            </Pressable>
+                            <Pressable style={[styles.th, { flex: 1, minWidth: 80, justifyContent: 'center' }]} onPress={() => handleSort('ordersCount')}>
+                                <Text style={[styles.thText, { textAlign: 'center' }]}>Pedidos</Text>
+                                {sortBy === 'ordersCount' && (
+                                    <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
+                                )}
+                            </Pressable>
+                            <Pressable style={[styles.th, { flex: 1.2, minWidth: 90, justifyContent: 'flex-end' }]} onPress={() => handleSort('totalSales')}>
+                                <Text style={[styles.thText, { textAlign: 'right' }]}>Ventas</Text>
+                                {sortBy === 'totalSales' && (
+                                    <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
+                                )}
+                            </Pressable>
+                            <Pressable style={[styles.th, { flex: 1, minWidth: 80, justifyContent: 'center' }]} onPress={() => handleSort('productsCount')}>
+                                <Text style={[styles.thText, { textAlign: 'center' }]}>Productos</Text>
+                                {sortBy === 'productsCount' && (
+                                    <FontAwesome name={sortOrder === 'asc' ? 'sort-up' : 'sort-down'} size={12} color="#94a3b8" style={{ marginLeft: 5 }} />
+                                )}
+                            </Pressable>
+                            <View style={[styles.th, { flex: 1, minWidth: 80, justifyContent: 'center' }]}>
+                                <Text style={[styles.thText, { textAlign: 'center' }]}>Estado</Text>
                             </View>
-                        ))
-                    )}
-                </View>
+                        </View>
+
+                        {/* Rows */}
+                        {sortedBusinesses.length === 0 ? (
+                            <View style={styles.emptyTable}>
+                                <Text style={styles.emptyTableText}>No hay negocios registrados.</Text>
+                            </View>
+                        ) : (
+                            sortedBusinesses.map((b, index) => (
+                                <View 
+                                    key={b.id} 
+                                    style={[
+                                        styles.tableRow, 
+                                        index % 2 === 1 && { backgroundColor: '#1e293b' }
+                                    ]}
+                                >
+                                    <View style={{ flex: 2, minWidth: 160 }}>
+                                        <Text style={styles.tdBusinessName}>{b.name}</Text>
+                                        <Text style={styles.tdBusinessId}>slug: {b.id}</Text>
+                                        {b.status === 'trial' ? (
+                                            <View style={{ marginTop: 4 }}>
+                                                {b.trialExpiresAt && new Date(b.trialExpiresAt).getTime() > Date.now() ? (
+                                                    <Text style={{ fontSize: 10, color: '#f59e0b', fontWeight: 'bold' }}>
+                                                        ⏳ Prueba (vence: {new Date(b.trialExpiresAt).toLocaleDateString()})
+                                                    </Text>
+                                                ) : (
+                                                    <Text style={{ fontSize: 10, color: '#ef4444', fontWeight: 'bold' }}>
+                                                        ⚠️ Prueba Vencida
+                                                    </Text>
+                                                )}
+                                            </View>
+                                        ) : (
+                                            <Text style={{ fontSize: 10, color: '#10b981', fontWeight: 'bold', marginTop: 4 }}>
+                                                ⭐ Activo Permanente
+                                            </Text>
+                                        )}
+                                        <Pressable 
+                                            style={{ marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 4 }}
+                                            onPress={() => handleUpdatePlanPrice(b.id, b.name, b.planPrice)}
+                                        >
+                                            <FontAwesome name="tag" size={10} color="#38bdf8" />
+                                            <Text style={{ fontSize: 11, color: '#38bdf8', fontWeight: 'bold', textDecorationLine: 'underline' }}>
+                                                Tarifa: ${(b.planPrice || 9000).toLocaleString()}/mes (editar)
+                                            </Text>
+                                        </Pressable>
+                                    </View>
+                                    <Text style={[styles.tdText, { flex: 2, minWidth: 160, color: '#94a3b8' }]}>{b.email}</Text>
+                                    <Text style={[styles.tdText, { flex: 1, minWidth: 80, textAlign: 'center' }]}>{b.branchesCount}</Text>
+                                    <Text style={[styles.tdText, { flex: 1, minWidth: 80, textAlign: 'center' }]}>{b.clientsCount}</Text>
+                                    <Text style={[styles.tdText, { flex: 1, minWidth: 80, textAlign: 'center' }]}>{b.ordersCount}</Text>
+                                    <Text style={[styles.tdText, { flex: 1.2, minWidth: 90, textAlign: 'right', fontWeight: 'bold', color: '#10b981' }]}>
+                                        ${b.totalSales.toLocaleString()}
+                                    </Text>
+                                    <Text style={[styles.tdText, { flex: 1, minWidth: 80, textAlign: 'center' }]}>{b.productsCount}</Text>
+                                    
+                                    <View style={{ flex: 2, minWidth: 260, flexDirection: 'row', justifyContent: 'center', flexWrap: 'wrap', gap: 5 }}>
+                                        <Pressable 
+                                            style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, backgroundColor: '#f59e0b' }}
+                                            onPress={() => handleExtendTrial(b.id, 7, b.name)}
+                                        >
+                                            <Text style={{ color: '#000', fontSize: 10, fontWeight: 'bold' }}>+7 DÍAS</Text>
+                                        </Pressable>
+                                        <Pressable 
+                                            style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, backgroundColor: '#0284c7' }}
+                                            onPress={() => handleExtendTrial(b.id, 30, b.name)}
+                                        >
+                                            <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>+30 DÍAS</Text>
+                                        </Pressable>
+                                        <Pressable 
+                                            style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, backgroundColor: '#10b981' }}
+                                            onPress={() => handleActivatePermanent(b.id, b.name)}
+                                        >
+                                            <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>PERMANENTE</Text>
+                                        </Pressable>
+                                        <Pressable 
+                                            style={{ paddingHorizontal: 7, paddingVertical: 4, borderRadius: 5, backgroundColor: '#8b5cf6' }}
+                                            onPress={() => router.push({ pathname: '/(admin)/business/[id]', params: { id: b.id } } as any)}
+                                        >
+                                            <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>VER</Text>
+                                        </Pressable>
+                                        <Pressable 
+                                            style={{ paddingHorizontal: 8, paddingVertical: 4, borderRadius: 5, backgroundColor: b.isActive ? '#ef4444' : '#64748b' }}
+                                            onPress={() => handleToggleBusinessStatus(b.id, b.isActive, b.name)}
+                                        >
+                                            <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>{b.isActive ? 'SUSPENDER' : 'HABILITAR'}</Text>
+                                        </Pressable>
+                                    </View>
+
+                                </View>
+                            ))
+                        )}
+                    </View>
+                </ScrollView>
             </View>
         </ScrollView>
     );
@@ -709,8 +711,11 @@ const styles = StyleSheet.create({
         backgroundColor: '#0f172a',
     },
     contentContainer: {
-        padding: 30,
-        paddingBottom: 100
+        padding: 16,
+        paddingBottom: 80,
+    },
+    horizontalScroll: {
+        width: '100%',
     },
     loadingContainer: {
         flex: 1,
