@@ -213,7 +213,26 @@ export const renderWhatsAppMessage = (
         baseUrl?: string;
     }
 ): string => {
-    const origin = params.baseUrl || (typeof window !== 'undefined' ? window.location.origin : 'https://tuspedidos-mu.vercel.app');
+    // Si no se especifica baseUrl o estamos en localhost, usar SIEMPRE la URL pública oficial de producción de Vercel
+    const defaultPublicUrl = 'https://tuspedidos-mu.vercel.app';
+    let origin = params.baseUrl;
+
+    if (!origin) {
+        if (typeof window !== 'undefined') {
+            const currentOrigin = window.location.origin;
+            // Si estamos probando en localhost o 127.0.0.1, mandamos SIEMPRE el dominio de Vercel
+            if (currentOrigin.includes('localhost') || currentOrigin.includes('127.0.0.1') || currentOrigin.includes('192.168.')) {
+                origin = defaultPublicUrl;
+            } else {
+                origin = currentOrigin;
+            }
+        } else {
+            origin = defaultPublicUrl;
+        }
+    } else if (origin.includes('localhost') || origin.includes('127.0.0.1')) {
+        origin = defaultPublicUrl;
+    }
+
     const link = `${origin}/iniciar-demo?b=${encodeURIComponent(params.slug)}&name=${encodeURIComponent(params.businessName)}&c=${encodeURIComponent(params.code)}`;
     
     const salutationName = params.contactName || params.businessName || 'tu negocio';
