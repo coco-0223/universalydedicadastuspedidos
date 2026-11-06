@@ -1758,149 +1758,169 @@ export default function AdminDashboardScreen() {
                                 </Pressable>
                             </View>
                         ) : (
-                            <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.horizontalScroll}>
-                                <View style={styles.tableContainer}>
-                                    <View style={styles.tableHeader}>
-                                        <View style={[styles.th, { flex: 2, minWidth: 160 }]}><Text style={styles.thText}>Negocio / Lead</Text></View>
-                                        <View style={[styles.th, { flex: 1.5, minWidth: 130 }]}><Text style={styles.thText}>WhatsApp</Text></View>
-                                        <View style={[styles.th, { flex: 1.5, minWidth: 140 }]}><Text style={styles.thText}>Responsable Asignado</Text></View>
-                                        <View style={[styles.th, { flex: 1.2, minWidth: 100 }]}><Text style={styles.thText}>Tarifa Fijada</Text></View>
-                                        <View style={[styles.th, { flex: 1.2, minWidth: 110 }]}><Text style={styles.thText}>Estado</Text></View>
-                                        <View style={[styles.th, { flex: 2.2, minWidth: 200, justifyContent: 'center' }]}><Text style={[styles.thText, { textAlign: 'center' }]}>Acciones</Text></View>
-                                    </View>
+                            <View style={[styles.tableContainer, { width: '100%' }]}>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={true} style={{ width: '100%' }} contentContainerStyle={{ minWidth: '100%' }}>
+                                    <View style={{ width: '100%', minWidth: 950 }}>
+                                        <View style={styles.tableHeader}>
+                                            <View style={[styles.th, { flex: 2.2, minWidth: 200 }]}><Text style={styles.thText}>Negocio / Lead</Text></View>
+                                            <View style={[styles.th, { flex: 1.5, minWidth: 140 }]}><Text style={styles.thText}>WhatsApp</Text></View>
+                                            <View style={[styles.th, { flex: 1.5, minWidth: 150 }]}><Text style={styles.thText}>Responsable Asignado</Text></View>
+                                            <View style={[styles.th, { flex: 1.2, minWidth: 110 }]}><Text style={styles.thText}>Tarifa Fijada</Text></View>
+                                            <View style={[styles.th, { flex: 1.2, minWidth: 110 }]}><Text style={styles.thText}>Estado</Text></View>
+                                            <View style={[styles.th, { flex: 2, minWidth: 180, justifyContent: 'center' }]}><Text style={[styles.thText, { textAlign: 'center' }]}>Acciones</Text></View>
+                                        </View>
 
-                                    {filteredProspects.map((lead, idx) => {
-                                        const isRowCritical = Boolean(lead.isCritical || !lead.phone);
-                                        return (
-                                        <View 
-                                            key={lead.id}
-                                            style={[
-                                                styles.tableRow,
-                                                idx % 2 === 1 && { backgroundColor: '#1e293b' },
-                                                isRowCritical && { backgroundColor: '#3b1219', borderLeftWidth: 4, borderLeftColor: '#ef4444' }
-                                            ]}
-                                        >
-                                            <View style={{ flex: 2, minWidth: 160 }}>
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                                    <Text style={[styles.tdBusinessName, isRowCritical && { color: '#fca5a5' }]}>
-                                                        {lead.businessName || lead.name}
+                                        {filteredProspects.map((lead, idx) => {
+                                            const isRowCritical = Boolean(lead.isCritical || !lead.phone);
+                                            return (
+                                            <View 
+                                                key={lead.id}
+                                                style={[
+                                                    styles.tableRow,
+                                                    idx % 2 === 1 && { backgroundColor: '#1e293b' },
+                                                    isRowCritical && { backgroundColor: '#3b1219', borderLeftWidth: 4, borderLeftColor: '#ef4444' }
+                                                ]}
+                                            >
+                                                <View style={{ flex: 2.2, minWidth: 200 }}>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                                        <Text style={[styles.tdBusinessName, isRowCritical && { color: '#fca5a5' }]}>
+                                                            {lead.businessName || lead.name}
+                                                        </Text>
+                                                        {isRowCritical && (
+                                                            <View style={{ backgroundColor: '#ef4444', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                                                <Text style={{ color: '#fff', fontSize: 9, fontWeight: 'bold' }}>⚠️ CRÍTICO</Text>
+                                                            </View>
+                                                        )}
+                                                    </View>
+                                                    {lead.contactName && (
+                                                        <Text style={{ fontSize: 11, color: '#e2e8f0', fontWeight: '600' }}>👤 {lead.contactName}</Text>
+                                                    )}
+                                                    <Text style={styles.tdBusinessId}>slug: {lead.id}</Text>
+                                                    {(lead.zone || lead.province) && (
+                                                        <Text style={{ fontSize: 10, color: '#38bdf8', marginTop: 2 }}>
+                                                            📍 {[lead.zone, lead.province, lead.country].filter(Boolean).join(', ')}
+                                                        </Text>
+                                                    )}
+                                                    {lead.instagram && (
+                                                        <Text style={{ fontSize: 10, color: '#e1306c', marginTop: 2 }}>
+                                                            📷 {lead.instagram}
+                                                        </Text>
+                                                    )}
+                                                    {lead.website && (
+                                                        <Text style={{ fontSize: 10, color: '#38bdf8', marginTop: 1 }}>
+                                                            🌐 {lead.website}
+                                                        </Text>
+                                                    )}
+                                                    {lead.notes && <Text style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic', marginTop: 2 }}>📝 {lead.notes}</Text>}
+                                                </View>
+                                                <View style={{ flex: 1.5, minWidth: 140 }}>
+                                                    <Text style={{ color: isRowCritical && !lead.phone ? '#ef4444' : '#fff', fontSize: 13, fontWeight: '600' }}>
+                                                        {lead.phone ? `+${lead.phone}` : '⚠️ Sin teléfono'}
                                                     </Text>
-                                                    {isRowCritical && (
-                                                        <View style={{ backgroundColor: '#ef4444', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
-                                                            <Text style={{ color: '#fff', fontSize: 9, fontWeight: 'bold' }}>⚠️ CRÍTICO</Text>
+                                                    {lead.email && <Text style={{ fontSize: 10, color: '#94a3b8' }}>{lead.email}</Text>}
+                                                </View>
+                                                <View style={{ flex: 1.5, minWidth: 150 }}>
+                                                    {lead.assignedTo ? (
+                                                        <View style={{ backgroundColor: '#1e3a8a', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, alignSelf: 'flex-start' }}>
+                                                            <Text style={{ color: '#93c5fd', fontSize: 11, fontWeight: 'bold' }}>👤 {lead.assignedTo}</Text>
                                                         </View>
+                                                    ) : (
+                                                        <Text style={{ color: '#64748b', fontSize: 11, fontStyle: 'italic' }}>Sin asignar</Text>
                                                     )}
                                                 </View>
-                                                {lead.contactName && (
-                                                    <Text style={{ fontSize: 11, color: '#e2e8f0', fontWeight: '600' }}>👤 {lead.contactName}</Text>
-                                                )}
-                                                <Text style={styles.tdBusinessId}>slug: {lead.id}</Text>
-                                                {lead.criticalReason && (
-                                                    <Text style={{ fontSize: 10, color: '#f87171', fontWeight: 'bold', marginTop: 2 }}>
-                                                        Motivo: {lead.criticalReason}
+                                                <View style={{ flex: 1.2, minWidth: 110 }}>
+                                                    <Text style={{ color: '#38bdf8', fontSize: 13, fontWeight: 'bold' }}>
+                                                        ${(lead.planPrice || 9000).toLocaleString()}/m
                                                     </Text>
-                                                )}
-                                                {(lead.zone || lead.province) && (
-                                                    <Text style={{ fontSize: 10, color: '#38bdf8', marginTop: 2 }}>
-                                                        📍 {[lead.zone, lead.province, lead.country].filter(Boolean).join(', ')}
-                                                    </Text>
-                                                )}
-                                                {lead.instagram && (
-                                                    <Text style={{ fontSize: 10, color: '#e1306c', marginTop: 2 }}>
-                                                        📷 {lead.instagram}
-                                                    </Text>
-                                                )}
-                                                {lead.website && (
-                                                    <Text style={{ fontSize: 10, color: '#38bdf8', marginTop: 1 }}>
-                                                        🌐 {lead.website}
-                                                    </Text>
-                                                )}
-                                                {lead.notes && <Text style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic', marginTop: 2 }}>📝 {lead.notes}</Text>}
-                                            </View>
-                                            <View style={{ flex: 1.5, minWidth: 130 }}>
-                                                <Text style={{ color: isRowCritical && !lead.phone ? '#ef4444' : '#fff', fontSize: 13, fontWeight: '600' }}>
-                                                    {lead.phone ? `+${lead.phone}` : '⚠️ Sin teléfono'}
-                                                </Text>
-                                                {lead.email && <Text style={{ fontSize: 10, color: '#94a3b8' }}>{lead.email}</Text>}
-                                            </View>
-                                            <View style={{ flex: 1.5, minWidth: 140 }}>
-                                                {lead.assignedTo ? (
-                                                    <View style={{ backgroundColor: '#1e3a8a', paddingHorizontal: 7, paddingVertical: 3, borderRadius: 4, alignSelf: 'flex-start' }}>
-                                                        <Text style={{ color: '#93c5fd', fontSize: 11, fontWeight: 'bold' }}>👤 {lead.assignedTo}</Text>
-                                                    </View>
-                                                ) : (
-                                                    <Text style={{ color: '#64748b', fontSize: 11, fontStyle: 'italic' }}>Sin asignar</Text>
-                                                )}
-                                            </View>
-                                            <View style={{ flex: 1.2, minWidth: 100 }}>
-                                                <Text style={{ color: '#38bdf8', fontSize: 13, fontWeight: 'bold' }}>
-                                                    ${(lead.planPrice || 9000).toLocaleString()}/m
-                                                </Text>
-                                                <Text style={{ fontSize: 9, color: '#64748b' }}>código: {lead.priceCode}</Text>
-                                            </View>
-                                            <View style={{ flex: 1.2, minWidth: 110 }}>
-                                                <View style={{
-                                                    backgroundColor: lead.status === 'contacted' ? '#065f46' : '#78350f',
-                                                    paddingHorizontal: 8,
-                                                    paddingVertical: 3,
-                                                    borderRadius: 4,
-                                                    alignSelf: 'flex-start'
-                                                }}>
-                                                    <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>
-                                                        {lead.status === 'contacted' ? '✓ Contactado' : 'Pendiente'}
-                                                    </Text>
+                                                    <Text style={{ fontSize: 9, color: '#64748b' }}>código: {lead.priceCode}</Text>
                                                 </View>
-                                                {lead.lastContactedAt && (
-                                                    <Text style={{ fontSize: 9, color: '#94a3b8', marginTop: 2 }}>
-                                                        {new Date(lead.lastContactedAt).toLocaleDateString()}
-                                                    </Text>
-                                                )}
+                                                <View style={{ flex: 1.2, minWidth: 110 }}>
+                                                    <View style={{
+                                                        backgroundColor: lead.status === 'contacted' ? '#065f46' : '#78350f',
+                                                        paddingHorizontal: 8,
+                                                        paddingVertical: 3,
+                                                        borderRadius: 4,
+                                                        alignSelf: 'flex-start'
+                                                    }}>
+                                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>
+                                                            {lead.status === 'contacted' ? '✓ Contactado' : 'Pendiente'}
+                                                        </Text>
+                                                    </View>
+                                                    {lead.lastContactedAt && (
+                                                        <Text style={{ fontSize: 9, color: '#94a3b8', marginTop: 2 }}>
+                                                            {new Date(lead.lastContactedAt).toLocaleDateString()}
+                                                        </Text>
+                                                    )}
+                                                </View>
+                                                <View style={{ flex: 2, minWidth: 180, flexDirection: 'row', gap: 6, justifyContent: 'center', alignItems: 'center' }}>
+                                                    <Pressable
+                                                        style={{
+                                                            backgroundColor: lead.phone ? '#25D366' : '#64748b',
+                                                            paddingHorizontal: 10,
+                                                            paddingVertical: 6,
+                                                            borderRadius: 6,
+                                                            flexDirection: 'row',
+                                                            alignItems: 'center',
+                                                            gap: 5,
+                                                            opacity: lead.phone ? 1 : 0.6
+                                                        }}
+                                                        disabled={!lead.phone}
+                                                        onPress={() => handleSendWhatsAppLead(lead)}
+                                                    >
+                                                        <FontAwesome name="whatsapp" size={13} color="#000" />
+                                                        <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>
+                                                            {lead.phone ? 'WhatsApp' : 'Sin Tel'}
+                                                        </Text>
+                                                    </Pressable>
+                                                    <Pressable
+                                                        style={{ backgroundColor: '#0284c7', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6 }}
+                                                        onPress={() => {
+                                                            setEditingLead({ ...lead });
+                                                            setIsEditLeadModalOpen(true);
+                                                        }}
+                                                    >
+                                                        <FontAwesome name="pencil" size={12} color="#fff" />
+                                                    </Pressable>
+                                                    <Pressable
+                                                        style={{ backgroundColor: '#334155', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6 }}
+                                                        onPress={async () => {
+                                                            if (Platform.OS === 'web' && !confirm(`¿Eliminar al prospecto "${lead.businessName || lead.name}"?`)) return;
+                                                            await deleteDoc(doc(db, 'prospect_leads', lead.id));
+                                                            setProspects(prev => prev.filter(p => p.id !== lead.id));
+                                                        }}
+                                                    >
+                                                        <FontAwesome name="trash" size={12} color="#f87171" />
+                                                    </Pressable>
+                                                </View>
                                             </View>
-                                            <View style={{ flex: 2.2, minWidth: 200, flexDirection: 'row', gap: 6, justifyContent: 'center', alignItems: 'center' }}>
-                                                <Pressable
-                                                    style={{
-                                                        backgroundColor: lead.phone ? '#25D366' : '#64748b',
-                                                        paddingHorizontal: 10,
-                                                        paddingVertical: 6,
-                                                        borderRadius: 6,
-                                                        flexDirection: 'row',
-                                                        alignItems: 'center',
-                                                        gap: 5,
-                                                        opacity: lead.phone ? 1 : 0.6
-                                                    }}
-                                                    disabled={!lead.phone}
-                                                    onPress={() => handleSendWhatsAppLead(lead)}
-                                                >
-                                                    <FontAwesome name="whatsapp" size={13} color="#000" />
-                                                    <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>
-                                                        {lead.phone ? 'WhatsApp' : 'Sin Tel'}
-                                                    </Text>
-                                                </Pressable>
-                                                <Pressable
-                                                    style={{ backgroundColor: '#0284c7', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6 }}
-                                                    onPress={() => {
-                                                        setEditingLead({ ...lead });
-                                                        setIsEditLeadModalOpen(true);
-                                                    }}
-                                                >
-                                                    <FontAwesome name="pencil" size={12} color="#fff" />
-                                                </Pressable>
-                                                <Pressable
-                                                    style={{ backgroundColor: '#334155', paddingHorizontal: 8, paddingVertical: 6, borderRadius: 6 }}
-                                                    onPress={async () => {
-                                                        if (Platform.OS === 'web' && !confirm(`¿Eliminar al prospecto "${lead.businessName || lead.name}"?`)) return;
-                                                        await deleteDoc(doc(db, 'prospect_leads', lead.id));
-                                                        setProspects(prev => prev.filter(p => p.id !== lead.id));
-                                                    }}
-                                                >
-                                                    <FontAwesome name="trash" size={12} color="#f87171" />
-                                                </Pressable>
-                                            </View>
+                                            );
+                                        })}
+                                    </View>
+                                </ScrollView>
+
+                                {/* Notificaciones y advertencias críticas colocadas ABAJO de la tabla */}
+                                {filteredProspects.some(p => p.isCritical || !p.phone) && (
+                                    <View style={{ backgroundColor: '#2d1519', borderTopWidth: 1, borderTopColor: '#dc2626', padding: 12 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                            <FontAwesome name="exclamation-circle" size={15} color="#ef4444" />
+                                            <Text style={{ color: '#fca5a5', fontSize: 12, fontWeight: 'bold' }}>
+                                                Motivos Críticos Detectados en esta lista:
+                                            </Text>
                                         </View>
-                                        );
-                                    })}
-                                </View>
-                            </ScrollView>
+                                        {filteredProspects.filter(p => p.isCritical || !p.phone).map((p) => (
+                                            <View key={p.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 2, flexWrap: 'wrap' }}>
+                                                <Text style={{ color: '#fff', fontSize: 11, fontWeight: 'bold' }}>• {p.businessName || p.name}:</Text>
+                                                <View style={{ backgroundColor: '#dc2626', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 3 }}>
+                                                    <Text style={{ color: '#fff', fontSize: 9, fontWeight: 'bold' }}>ADVERTENCIA</Text>
+                                                </View>
+                                                <Text style={{ color: '#fca5a5', fontSize: 11 }}>
+                                                    {p.criticalReason || (!p.phone ? 'Número de teléfono inválido o faltante (se requiere código de área argentino válido)' : 'Requiere revisión manual')}
+                                                </Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                )}
+                            </View>
                         );
                     })()
                 )}

@@ -65,16 +65,117 @@ export const priceToOpaqueCode = (price: number): string => {
     return `k${thousands}`;
 };
 
+/**
+ * Lista de códigos de área argentinos oficiales (2, 3 o 4 dígitos)
+ */
+export const ARGENTINA_AREA_CODES = [
+    // 2 dígitos
+    '11',
+    // 3 dígitos (principales ciudades / capitales)
+    '220', '221', '223', '230', '237', '249', '260', '261', '263', '264', '266',
+    '280', '291', '294', '297', '298', '299', '336', '341', '342', '343', '345',
+    '348', '351', '353', '358', '362', '364', '370', '376', '379', '380', '381',
+    '383', '385', '387', '388',
+    // 4 dígitos (interior)
+    '2202', '2221', '2223', '2224', '2225', '2226', '2227', '2241', '2242', '2243',
+    '2244', '2245', '2246', '2252', '2254', '2255', '2257', '2261', '2262', '2264',
+    '2265', '2266', '2267', '2268', '2271', '2272', '2273', '2274', '2281', '2283',
+    '2284', '2285', '2286', '2291', '2292', '2296', '2297', '2314', '2316', '2317',
+    '2320', '2323', '2324', '2325', '2326', '2331', '2333', '2334', '2335', '2336',
+    '2337', '2338', '2342', '2343', '2344', '2345', '2346', '2352', '2353', '2354',
+    '2355', '2356', '2357', '2358', '2364', '2392', '2393', '2394', '2395', '2396',
+    '2473', '2474', '2475', '2477', '2478', '2901', '2902', '2920', '2921', '2922',
+    '2923', '2924', '2925', '2926', '2927', '2928', '2929', '2931', '2932', '2933',
+    '2934', '2935', '2936', '2940', '2942', '2945', '2946', '2948', '2952', '2953',
+    '2954', '2962', '2963', '2964', '2966', '2972', '2974', '2982', '2983', '3327',
+    '3329', '3382', '3385', '3387', '3388', '3400', '3401', '3402', '3404', '3405',
+    '3406', '3407', '3408', '3409', '3442', '3444', '3445', '3446', '3447', '3454',
+    '3455', '3456', '3458', '3460', '3462', '3463', '3464', '3465', '3466', '3467',
+    '3468', '3469', '3471', '3472', '3476', '3482', '3483', '3487', '3489', '3491',
+    '3492', '3493', '3496', '3497', '3498', '3521', '3522', '3524', '3525', '3532',
+    '3533', '3537', '3541', '3542', '3543', '3544', '3546', '3547', '3548', '3549',
+    '3562', '3563', '3564', '3571', '3572', '3573', '3574', '3575', '3576', '3582',
+    '3583', '3584', '3585', '3711', '3715', '3716', '3718', '3721', '3725', '3731',
+    '3734', '3735', '3741', '3743', '3751', '3754', '3755', '3756', '3757', '3758',
+    '3772', '3773', '3774', '3775', '3777', '3781', '3782', '3786', '3821', '3825',
+    '3826', '3827', '3832', '3835', '3837', '3838', '3841', '3843', '3844', '3845',
+    '3846', '3854', '3855', '3856', '3857', '3858', '3861', '3862', '3863', '3865',
+    '3867', '3868', '3869', '3873', '3876', '3877', '3878', '3885', '3886', '3887',
+    '3888'
+];
+
+/**
+ * Normaliza e identifica inteligentemente números de WhatsApp de Argentina:
+ * Formatos de entrada comunes:
+ * - 1145678901 (10 dígitos con código de área) -> 5491145678901
+ * - 1545678901 (8 dígitos + prefijo 15 sin código de área) -> asume AMBA '11' -> 5491145678901
+ * - 45678901 (8 dígitos fijo/móvil local AMBA) -> 5491145678901
+ * - 11 15 45678901 -> 5491145678901
+ * - 351 15 9876543 (Córdoba con 15 intermedio) -> 5493519876543
+ * - +54 9 11 ... o +54 11 ... -> 54911...
+ *
+ * Rechaza números inválidos o demasiado cortos (ej: 11232345 son solo 8 dígitos comenzando con 112... no es móvil de 10 dígitos)
+ */
 export const sanitizeWhatsAppPhone = (rawPhone: string): string => {
     let clean = (rawPhone || '').replace(/[^0-9]/g, '');
     if (!clean) return '';
-    if (clean.startsWith('0')) clean = clean.substring(1);
-    if (clean.length === 10) {
-        clean = `549${clean}`;
-    } else if (clean.startsWith('54') && !clean.startsWith('549') && clean.length === 12) {
-        clean = `549${clean.substring(2)}`;
+
+    // Si comienza con 0 inicial de discado nacional (ej: 011..., 0351...), quitarlo
+    if (clean.startsWith('0')) {
+        clean = clean.substring(1);
     }
-    return clean;
+
+    // Quitar prefijo de país si ya lo tenía (+54 o +549)
+    if (clean.startsWith('549')) {
+        clean = clean.substring(3);
+    } else if (clean.startsWith('54')) {
+        clean = clean.substring(2);
+    }
+
+    // Caso A: El usuario puso el 15 luego del código de área (ej: 11 15 45678901 o 351 15 2345678)
+    // Probamos si coincide con algún código de área seguido de 15
+    for (const code of ['11', ...ARGENTINA_AREA_CODES.filter(c => c !== '11')]) {
+        if (clean.startsWith(code + '15')) {
+            const rest = clean.substring(code.length + 2);
+            // El resto debe completar 10 dígitos junto con el código
+            if (code.length + rest.length === 10) {
+                clean = code + rest;
+                break;
+            }
+        }
+    }
+
+    // Caso B: El usuario puso solo el 15 inicial (ej: 1545678901 -> 15 + 8 dígitos locales de Buenos Aires)
+    if (clean.startsWith('15') && clean.length === 10) {
+        // 15 + 8 dígitos -> En Argentina si ponen 15 sin código de área, es 11 (AMBA)
+        clean = '11' + clean.substring(2);
+    }
+
+    // Caso C: Puso un número local de 8 dígitos de Buenos Aires sin código ni 15 (ej: 45678901 o 65432109)
+    if (clean.length === 8 && !clean.startsWith('11')) {
+        clean = '11' + clean;
+    }
+
+    // Validación de longitud argentina oficial: 10 dígitos (código de área + número de abonado)
+    if (clean.length === 10) {
+        // Verificar si los primeros 2, 3 o 4 dígitos corresponden a un código de área argentino
+        const hasValidAreaCode = ARGENTINA_AREA_CODES.some(code => clean.startsWith(code));
+        if (hasValidAreaCode) {
+            // Formato oficial de WhatsApp internacional para Argentina: 549 + 10 dígitos (ej: 5491145678901)
+            return `549${clean}`;
+        }
+    }
+
+    // Si ya tiene formato internacional completo de 12 dígitos (549 + 10)
+    if (clean.length === 12 && clean.startsWith('9')) {
+        const sub = clean.substring(1);
+        if (ARGENTINA_AREA_CODES.some(code => sub.startsWith(code))) {
+            return `54${clean}`;
+        }
+    }
+
+    // Si no cumple el formato válido argentino para WhatsApp, devolver vacío para marcar como crítico / inválido
+    return '';
 };
 
 export const nameToSlug = (name: string): string => {
