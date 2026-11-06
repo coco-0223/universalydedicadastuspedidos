@@ -1,9 +1,11 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { StyleSheet, Text, View, ScrollView, Pressable, ActivityIndicator, Alert, Platform } from 'react-native';
+import { StyleSheet, Text, View, ScrollView, Pressable, ActivityIndicator, Alert, Platform, TextInput } from 'react-native';
 import { FontAwesome } from '@expo/vector-icons';
 import { collection, getDocs, doc, getDoc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { db, auth } from '../../src/config/firebase';
 import { useRouter } from 'expo-router';
+import { useAppContext } from '../../src/context/AppContext';
+import { SuperAdminRecord, isPrimarySuperAdmin, PRIMARY_SUPERADMIN_EMAIL } from '../../src/utils/superAdminAuth';
 
 interface BusinessRowData {
     id: string;
@@ -46,12 +48,20 @@ interface AdminRequest {
 
 export default function AdminDashboardScreen() {
     const router = useRouter();
+    const { user } = useAppContext();
+    const isOwner = isPrimarySuperAdmin(user?.email);
+
     const [loading, setLoading] = useState(true);
     const [businesses, setBusinesses] = useState<BusinessRowData[]>([]);
     const [requests, setRequests] = useState<AdminRequest[]>([]);
     const [blockedAttempts, setBlockedAttempts] = useState<BlockedAttempt[]>([]);
     const [sortBy, setSortBy] = useState<keyof BusinessRowData>('name');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+    // SuperAdmin Invitations & Management (Only Owner can invite or approve)
+    const [superadmins, setSuperadmins] = useState<SuperAdminRecord[]>([]);
+    const [inviteEmailInput, setInviteEmailInput] = useState('');
+    const [isInviting, setIsInviting] = useState(false);
 
     
     const handleUpdatePlanPrice = async (bId: string, bName: string, currentPrice?: number) => {
@@ -291,6 +301,17 @@ export default function AdminDashboardScreen() {
                 console.warn("Error fetching blocked attempts:", err);
             }
 
+            // 5. Fetch SuperAdmin List
+            try {
+                const saSnap = await getDocs(collection(db, 'superadmins'));
+                const saList: SuperAdminRecord[] = saSnap.docs.map(doc => ({
+                    ...doc.data()
+                } as SuperAdminRecord)).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+                setSuperadmins(saList);
+            } catch (err) {
+                console.warn("Error fetching superadmins:", err);
+            }
+
         } catch (error) {
             console.error("Error fetching admin dashboard data:", error);
             if (Platform.OS === 'web') alert('Error al cargar datos del panel.');
@@ -396,6 +417,126 @@ export default function AdminDashboardScreen() {
         }
     };
 
+    // --- Gestor de Invitaciones de SuperAdmins (Solo para el Dueño Principal) ---
+    const handleSendInvitation = async () => {
+        if (!isOwner) {
+            const msg = 'Solo el Administrador Principal (Owner) puede enviar invitaciones.';
+            if (Platform.OS === 'web') alert(msg);
+            else Alert.alert('Permiso denegado', msg);
+            return;
+        }
+
+        const cleanEmail = inviteEmailInput.trim().toLowerCase();
+        if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
+            const msg = 'Ingresá un email válido.';
+            if (Platform.OS === 'web') alert(msg);
+            else Alert.alert('Error', msg);
+            return;
+        }
+
+        if (cleanEmail === PRIMARY_SUPERADMIN_EMAIL) {
+            const msg = 'Este correo ya es el SuperAdmin Principal.';
+            if (Platform.OS === 'web') alert(msg);
+            else Alert.alert('Atención', msg);
+            return;
+        }
+
+        try {
+            setIsInviting(true);
+            const now = new Date().toISOString();
+            const newRecord: SuperAdminRecord = {
+                email: cleanEmail,
+                role: 'invited_admin',
+                status: 'pending',
+                invitedBy: user?.email || PRIMARY_SUPERADMIN_EMAIL,
+                createdAt: now,
+                updatedAt: now
+            };
+
+            await setDoc(doc(db, 'superadmins', cleanEmail), newRecord);
+            setSuperadmins(prev => {
+                const filtered = prev.filter(s => s.email.toLowerCase() !== cleanEmail);
+                return [newRecord, ...filtered];
+            });
+            setInviteEmailInput('');
+
+            const successMsg = `Invitación enviada para ${cleanEmail}. Podés aprobarla ahora o cuando se registre con ese mail en TusPedidos.`;
+            if (Platform.OS === 'web') alert(successMsg);
+            else Alert.alert('Invitación Enviada', successMsg);
+        } catch (err: any) {
+            console.error('Error enviando invitación:', err);
+            const errMsg = err?.message || 'No se pudo registrar la invitación.';
+            if (Platform.OS === 'web') alert(errMsg);
+            else Alert.alert('Error', errMsg);
+        } finally {
+            setIsInviting(false);
+        }
+    };
+
+    const handleUpdateSuperAdminStatus = async (targetEmail: string, newStatus: 'approved' | 'rejected') => {
+        if (!isOwner) {
+            const msg = 'Solo el Administrador Principal (Owner) puede aprobar o rechazar administradores.';
+            if (Platform.OS === 'web') alert(msg);
+            else Alert.alert('Permiso denegado', msg);
+            return;
+        }
+
+        const confirmAction = Platform.OS === 'web'
+            ? window.confirm(`¿Seguro que querés ${newStatus === 'approved' ? 'APROBAR' : 'RECHAZAR'} el acceso a ${targetEmail}?`)
+            : true;
+        if (!confirmAction) return;
+
+        try {
+            setLoading(true);
+            const cleanEmail = targetEmail.trim().toLowerCase();
+            const now = new Date().toISOString();
+
+            await updateDoc(doc(db, 'superadmins', cleanEmail), {
+                status: newStatus,
+                updatedAt: now
+            });
+
+            setSuperadmins(prev => prev.map(s => s.email.toLowerCase() === cleanEmail ? { ...s, status: newStatus, updatedAt: now } : s));
+            const msg = `El usuario ${cleanEmail} fue ${newStatus === 'approved' ? 'APROBADO con permisos de SuperAdmin' : 'RECHAZADO'}.`;
+            if (Platform.OS === 'web') alert(msg);
+            else Alert.alert('Éxito', msg);
+        } catch (err) {
+            console.error('Error actualizando estado de superadmin:', err);
+            Alert.alert('Error', 'No se pudo actualizar el estado.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleDeleteSuperAdmin = async (targetEmail: string) => {
+        if (!isOwner) {
+            const msg = 'Solo el Administrador Principal (Owner) puede revocar administradores.';
+            if (Platform.OS === 'web') alert(msg);
+            else Alert.alert('Permiso denegado', msg);
+            return;
+        }
+
+        const confirmDelete = Platform.OS === 'web'
+            ? window.confirm(`¿Seguro que querés ELIMINAR y revocar todos los permisos a ${targetEmail}?`)
+            : true;
+        if (!confirmDelete) return;
+
+        try {
+            setLoading(true);
+            const cleanEmail = targetEmail.trim().toLowerCase();
+            await deleteDoc(doc(db, 'superadmins', cleanEmail));
+            setSuperadmins(prev => prev.filter(s => s.email.toLowerCase() !== cleanEmail));
+            const msg = `Se revocó y eliminó el acceso de ${cleanEmail}.`;
+            if (Platform.OS === 'web') alert(msg);
+            else Alert.alert('Eliminado', msg);
+        } catch (err) {
+            console.error('Error eliminando superadmin:', err);
+            Alert.alert('Error', 'No se pudo eliminar el administrador.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Card totals
     const totalSalesSum = businesses.reduce((s, b) => s + b.totalSales, 0);
     const totalOrdersSum = businesses.reduce((s, b) => s + b.ordersCount, 0);
@@ -465,6 +606,148 @@ export default function AdminDashboardScreen() {
                     </View>
                 </View>
             </View>
+
+            {/* Requests Section */}
+            {/* SuperAdmin Invitations & Management Section (Available to Owner only for management, visible info) */}
+            {isOwner && (
+                <View style={[styles.sectionCard, { borderColor: '#3b82f6', borderWidth: 1 }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 10 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                            <FontAwesome name="user-plus" size={20} color="#3b82f6" />
+                            <Text style={[styles.sectionTitle, { marginBottom: 0 }]}>
+                                Administradores y Equipo SuperAdmin
+                            </Text>
+                        </View>
+                        <Text style={{ fontSize: 11, color: '#94a3b8' }}>
+                            Solo vos podés invitar, aprobar o revocar accesos.
+                        </Text>
+                    </View>
+                    <Text style={[styles.sectionSubtitle, { marginBottom: 15 }]}>
+                        Los administradores invitados pueden ver métricas, extender planes y gestionar clientes, pero no tienen permiso de enviar ni aceptar invitaciones.
+                    </Text>
+
+                    {/* Invite form */}
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20, flexWrap: 'wrap' }}>
+                        <TextInput
+                            style={{
+                                flex: 1,
+                                minWidth: 240,
+                                backgroundColor: '#1e293b',
+                                color: '#fff',
+                                paddingHorizontal: 14,
+                                paddingVertical: 10,
+                                borderRadius: 8,
+                                borderWidth: 1,
+                                borderColor: '#475569',
+                                fontSize: 14
+                            }}
+                            placeholder="Email del nuevo administrador (ej: socio@gmail.com)"
+                            placeholderTextColor="#64748b"
+                            value={inviteEmailInput}
+                            onChangeText={setInviteEmailInput}
+                            autoCapitalize="none"
+                            keyboardType="email-address"
+                        />
+                        <Pressable
+                            style={{
+                                backgroundColor: isInviting ? '#64748b' : '#3b82f6',
+                                paddingHorizontal: 18,
+                                paddingVertical: 12,
+                                borderRadius: 8,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 8
+                            }}
+                            disabled={isInviting}
+                            onPress={handleSendInvitation}
+                        >
+                            {isInviting ? (
+                                <ActivityIndicator size="small" color="#fff" />
+                            ) : (
+                                <FontAwesome name="paper-plane" size={14} color="#fff" />
+                            )}
+                            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>
+                                Enviar Invitación
+                            </Text>
+                        </Pressable>
+                    </View>
+
+                    {/* Superadmins list */}
+                    <View style={styles.requestsList}>
+                        {/* Primary Owner Row */}
+                        <View style={[styles.requestRow, { backgroundColor: '#1e293b', borderLeftColor: '#3b82f6', borderLeftWidth: 4 }]}>
+                            <View style={styles.reqDetails}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <Text style={[styles.reqBusinessName, { color: '#fff' }]}>{PRIMARY_SUPERADMIN_EMAIL}</Text>
+                                    <View style={{ backgroundColor: '#1d4ed8', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 }}>
+                                        <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>PROPIETARIO PRINCIPAL</Text>
+                                    </View>
+                                </View>
+                                <Text style={styles.reqBusinessInfo}>Acceso total y control de invitaciones</Text>
+                            </View>
+                        </View>
+
+                        {/* Invited Superadmins */}
+                        {superadmins.map((sa) => (
+                            <View 
+                                key={sa.email} 
+                                style={[
+                                    styles.requestRow, 
+                                    sa.status === 'approved' 
+                                        ? { backgroundColor: '#132e27', borderLeftColor: '#10b981', borderLeftWidth: 4 }
+                                        : sa.status === 'rejected'
+                                            ? { backgroundColor: '#2d1519', borderLeftColor: '#ef4444', borderLeftWidth: 4 }
+                                            : { backgroundColor: '#292212', borderLeftColor: '#f59e0b', borderLeftWidth: 4 }
+                                ]}
+                            >
+                                <View style={styles.reqDetails}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                                        <Text style={[styles.reqBusinessName, { color: '#fff' }]}>{sa.email}</Text>
+                                        <View style={{
+                                            backgroundColor: sa.status === 'approved' ? '#065f46' : (sa.status === 'rejected' ? '#7f1d1d' : '#78350f'),
+                                            paddingHorizontal: 8,
+                                            paddingVertical: 2,
+                                            borderRadius: 4
+                                        }}>
+                                            <Text style={{ color: '#fff', fontSize: 10, fontWeight: 'bold' }}>
+                                                {sa.status === 'approved' ? '✓ APROBADO' : (sa.status === 'rejected' ? '✕ RECHAZADO' : '⏳ PENDIENTE DE APROBACIÓN')}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <Text style={styles.reqBusinessInfo}>Invitado el: {new Date(sa.createdAt).toLocaleDateString()}</Text>
+                                </View>
+
+                                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                    {sa.status !== 'approved' && (
+                                        <Pressable
+                                            style={{ backgroundColor: '#10b981', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                                            onPress={() => handleUpdateSuperAdminStatus(sa.email, 'approved')}
+                                        >
+                                            <FontAwesome name="check" size={12} color="#fff" />
+                                            <Text style={{ color: '#fff', fontSize: 11, fontWeight: 'bold' }}>Aprobar</Text>
+                                        </Pressable>
+                                    )}
+                                    {sa.status !== 'rejected' && (
+                                        <Pressable
+                                            style={{ backgroundColor: '#eab308', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                                            onPress={() => handleUpdateSuperAdminStatus(sa.email, 'rejected')}
+                                        >
+                                            <FontAwesome name="ban" size={12} color="#000" />
+                                            <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>Rechazar</Text>
+                                        </Pressable>
+                                    )}
+                                    <Pressable
+                                        style={{ backgroundColor: '#dc2626', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6 }}
+                                        onPress={() => handleDeleteSuperAdmin(sa.email)}
+                                    >
+                                        <FontAwesome name="trash" size={12} color="#fff" />
+                                    </Pressable>
+                                </View>
+                            </View>
+                        ))}
+                    </View>
+                </View>
+            )}
 
             {/* Requests Section */}
             {requests.length > 0 && (

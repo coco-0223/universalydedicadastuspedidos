@@ -10,6 +10,7 @@ import { auth, db } from '../src/config/firebase';
 import { useAppContext } from '../src/context/AppContext';
 import { fetchBusinessData } from '../src/services/businessService';
 import { defaultSettings, DEDICATED_OWNER_EMAILS, IS_DEDICATED_APP } from '../src/data/mockData';
+import { checkIsSuperAdminAuthorized } from '../src/utils/superAdminAuth';
 
 import { useLocalSearchParams } from "expo-router";
 export default function BusinessAuthScreen() {
@@ -48,20 +49,21 @@ export default function BusinessAuthScreen() {
     // Auto-redirect if already logged in
     useEffect(() => {
         if (Platform.OS !== 'web') return;
-        if (!isLoading && user) {
-            const currentUserEmail = user?.email?.toLowerCase().trim();
-            if (currentUserEmail === 'cocobustos.93@gmail.com') {
+        const checkRedirect = async () => {
+            if (!isLoading && user) {
+                const currentUserEmail = user?.email?.toLowerCase().trim();
                 const currentHost = typeof window !== 'undefined' ? (window.location.hostname || '').toLowerCase() : '';
-                const isTusPedidosDomain = currentHost.includes('tuspedidos-mu.vercel.app') || currentHost.includes('tuspedidos');
-                if (isTusPedidosDomain) {
+                const isTusPedidosDomain = currentHost.includes('tuspedidos-mu.vercel.app') || currentHost.includes('tuspedidos') || currentHost === 'localhost' || currentHost === '127.0.0.1';
+
+                const isSuperAdmin = await checkIsSuperAdminAuthorized(currentUserEmail);
+                if (isSuperAdmin && isTusPedidosDomain) {
                     router.replace('/(admin)/dashboard');
-                } else {
+                } else if (user.role === 'business') {
                     router.replace('/(business)/admin');
                 }
-            } else if (user.role === 'business') {
-                router.replace('/(business)/admin');
             }
-        }
+        };
+        checkRedirect();
     }, [user, isLoading]);
 
     // showAlert removed
@@ -157,10 +159,13 @@ export default function BusinessAuthScreen() {
                 const cred = await signInWithEmailAndPassword(auth, email, password);
                 authId = cred.user.uid;
                 
-                if (email.trim().toLowerCase() === 'cocobustos.93@gmail.com') {
-                    await setDoc(doc(db, 'users', authId), { email: email.toLowerCase().trim(), role: 'business' }, { merge: true });
+                const cleanEmail = email.trim().toLowerCase();
+                const isSuperAdminAuthorized = await checkIsSuperAdminAuthorized(cleanEmail);
+
+                if (isSuperAdminAuthorized) {
+                    await setDoc(doc(db, 'users', authId), { email: cleanEmail, role: 'business' }, { merge: true });
                     const currentHost = typeof window !== 'undefined' ? (window.location.hostname || '').toLowerCase() : '';
-                    const isTusPedidosDomain = currentHost.includes('tuspedidos-mu.vercel.app') || currentHost.includes('tuspedidos');
+                    const isTusPedidosDomain = currentHost.includes('tuspedidos-mu.vercel.app') || currentHost.includes('tuspedidos') || currentHost === 'localhost' || currentHost === '127.0.0.1';
                     
                     if (!isTusPedidosDomain) {
                         // En rociocarnicerias o cualquier dominio que no sea tuspedidos, ingresa exclusivamente a administrar el negocio
@@ -170,7 +175,7 @@ export default function BusinessAuthScreen() {
                             surname: '',
                             address: '',
                             role: 'business' as const,
-                            email: email.trim().toLowerCase()
+                            email: cleanEmail
                         };
                         setUser(businessUser);
                         try {
@@ -182,11 +187,11 @@ export default function BusinessAuthScreen() {
 
                     const adminUser = {
                         id: authId,
-                        name: 'Super Admin',
+                        name: cleanEmail === 'cocobustos.93@gmail.com' ? 'Super Admin (Owner)' : 'Super Admin',
                         surname: '',
                         address: '',
                         role: 'business' as const,
-                        email: email.trim().toLowerCase()
+                        email: cleanEmail
                     };
                     setUser(adminUser);
                     router.replace('/(admin)/dashboard');

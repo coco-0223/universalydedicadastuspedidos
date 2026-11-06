@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { Slot, useRouter, usePathname, Redirect } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
@@ -6,6 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { signOut } from 'firebase/auth';
 import { auth } from '../../src/config/firebase';
 import { useAppContext } from '../../src/context/AppContext';
+import { checkIsSuperAdminAuthorized, isPrimarySuperAdmin } from '../../src/utils/superAdminAuth';
 
 export default function AdminLayout() {
     const { user, setUser, isLoading } = useAppContext();
@@ -13,6 +14,42 @@ export default function AdminLayout() {
     const pathname = usePathname();
     const { width } = useWindowDimensions();
     const isMobile = width < 768;
+    const [isVerifyingAuth, setIsVerifyingAuth] = useState(true);
+    const [isAuthorized, setIsAuthorized] = useState(false);
+
+    useEffect(() => {
+        let isMounted = true;
+        const verify = async () => {
+            if (isLoading) return;
+            if (!user?.email) {
+                if (isMounted) {
+                    setIsAuthorized(false);
+                    setIsVerifyingAuth(false);
+                }
+                return;
+            }
+
+            const currentHost = typeof window !== 'undefined' ? (window.location.hostname || '').toLowerCase() : '';
+            const isTusPedidosDomain = currentHost.includes('tuspedidos-mu.vercel.app') || currentHost.includes('tuspedidos') || currentHost === 'localhost' || currentHost === '127.0.0.1';
+
+            if (!isTusPedidosDomain) {
+                if (isMounted) {
+                    setIsAuthorized(false);
+                    setIsVerifyingAuth(false);
+                }
+                return;
+            }
+
+            const authorized = await checkIsSuperAdminAuthorized(user.email);
+            if (isMounted) {
+                setIsAuthorized(authorized);
+                setIsVerifyingAuth(false);
+            }
+        };
+
+        verify();
+        return () => { isMounted = false; };
+    }, [user, isLoading]);
 
     const logout = async () => {
         try {
@@ -22,7 +59,7 @@ export default function AdminLayout() {
         await AsyncStorage.removeItem('user');
     };
 
-    if (isLoading) {
+    if (isLoading || isVerifyingAuth) {
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0f172a' }}>
                 <ActivityIndicator size="large" color="#3b82f6" />
@@ -31,12 +68,7 @@ export default function AdminLayout() {
         );
     }
 
-    // Verify it is the super admin email AND accessed from TusPedidos domain
-    const currentHost = typeof window !== 'undefined' ? (window.location.hostname || '').toLowerCase() : '';
-    const isTusPedidosDomain = currentHost.includes('tuspedidos-mu.vercel.app') || currentHost.includes('tuspedidos') || currentHost === 'localhost' || currentHost === '127.0.0.1';
-    const isSuperAdmin = user?.email?.toLowerCase().trim() === 'cocobustos.93@gmail.com' && isTusPedidosDomain;
-
-    if (!user || !isSuperAdmin) {
+    if (!user || !isAuthorized) {
         return <Redirect href="/(business)/admin" />;
     }
 
