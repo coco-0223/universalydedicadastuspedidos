@@ -19,6 +19,8 @@ export interface ProspectLead {
     assignedTo?: string; // email del colaborador asignado para contactar (ej: diego@gmail.com)
     createdBy?: string; // quien cargó el prospecto
     status: 'pending' | 'contacted' | 'registered' | 'needs_verification' | 'archived';
+    isCritical?: boolean; // Advertencia crítica (ej: importado sin teléfono o con datos incompletos)
+    criticalReason?: string; // Razón de la advertencia crítica
     verificationReason?: string; // ej: "Posible duplicado con 'Carnicería Don Juan' (mismo negocio)"
     matchedWithId?: string; // id del prospecto existente con el que colisiona para contrastar
     createdAt: string;

@@ -680,16 +680,18 @@ export default function AdminDashboardScreen() {
 
             // Detectamos si la columna 1 o la columna 2 es el teléfono
             const isSecondColPhone = Boolean(sanitizeWhatsAppPhone(parts[1]));
-            if (isSecondColPhone) {
-                // Formato rápido alternativo: [Nombre Negocio, Whatsapp, Tarifa, Email, Asignado, Notas]
+            const isThirdColPhone = Boolean(sanitizeWhatsAppPhone(parts[2]));
+
+            if (isSecondColPhone && parts.length <= 6) {
+                // Formato rápido alternativo de 6 cols: [Nombre Negocio, Whatsapp, Tarifa, Email, Asignado, Notas]
                 businessName = parts[0] || '';
                 contactName = '';
                 rawPhone = parts[1] || '';
                 rawPrice = parts[2] || '';
                 rawEmail = parts[3] || '';
                 rawAssigned = parts[4] || rawAssigned;
-            } else if (parts.length >= 11) {
-                // Formato completo de 11 columnas
+            } else if (isThirdColPhone || parts.length >= 7) {
+                // Formato oficial estándar (donde col 0 es Negocio, col 1 es Persona, col 2 es Whatsapp)
                 businessName = parts[0] || '';
                 contactName = parts[1] || '';
                 rawPhone = parts[2] || '';
@@ -702,17 +704,12 @@ export default function AdminDashboardScreen() {
                 address = parts[9] || '';
                 country = parts[10] || '';
             } else {
-                // Formato estándar previo de 9 columnas:
-                // 0: Nombre Negocio | 1: Nombre | 2: Whatsapp | 3: Tarifa | 4: Email | 5: Provincia | 6: Zona | 7: Dirección | 8: País
+                // Intento flexible: si no tiene tantas columnas
                 businessName = parts[0] || '';
                 contactName = parts[1] || '';
                 rawPhone = parts[2] || '';
                 rawPrice = parts[3] || '';
                 rawEmail = parts[4] || '';
-                province = parts[5] || '';
-                zone = parts[6] || '';
-                address = parts[7] || '';
-                country = parts[8] || '';
             }
 
             const sanitizedPhone = sanitizeWhatsAppPhone(rawPhone);
@@ -877,25 +874,38 @@ export default function AdminDashboardScreen() {
     const handleCommitImport = async () => {
         let leadsToSave = [...parsedPreview.newLeads];
         if (includeIncompleteLeads && parsedPreview.invalidRows.length > 0) {
-            // Si el usuario marcó incluir filas incompletas
+            // Si el usuario marcó incluir filas incompletas con motivos críticos
             parsedPreview.invalidRows.forEach((inv, idx) => {
-                const parts = inv.raw.split(/[\t;,]/).map(p => p.trim());
-                const name = parts[0] || `Prospecto Incompleto ${idx + 1}`;
-                const rawPhone = parts[1] || '';
-                const slug = nameToSlug(name) || `lead-manual-${Date.now()}-${idx}`;
+                const parts = inv.raw.includes('\t') ? inv.raw.split('\t') : (inv.raw.includes(';') ? inv.raw.split(';') : inv.raw.split(','));
+                const cleanParts = parts.map(p => p.trim());
+                const bName = cleanParts[0] || `Prospecto Incompleto ${idx + 1}`;
+                const contact = cleanParts[1] || '';
+                // Intentar encontrar teléfono en cualquiera de las celdas
+                let foundPhone = '';
+                for (let i = 1; i < cleanParts.length; i++) {
+                    const sp = sanitizeWhatsAppPhone(cleanParts[i]);
+                    if (sp && sp.length >= 8) {
+                        foundPhone = sp;
+                        break;
+                    }
+                }
+                const slug = nameToSlug(bName) || `lead-manual-${Date.now()}-${idx}`;
                 const now = new Date().toISOString();
                 leadsToSave.push({
                     id: slug,
-                    businessName: name,
-                    name,
-                    phone: sanitizeWhatsAppPhone(rawPhone),
+                    businessName: bName,
+                    contactName: contact || undefined,
+                    name: bName,
+                    phone: foundPhone,
                     planPrice: 9000,
                     priceCode: 'fn26',
                     assignedTo: importDefaultAssignedTo || (user?.email || undefined),
                     status: 'pending',
+                    isCritical: true,
+                    criticalReason: inv.reason || 'Datos incompletos / Sin teléfono verificado',
                     createdAt: now,
                     updatedAt: now,
-                    notes: `Importado incompleto: ${inv.reason}`
+                    notes: `⚠️ Importado con advertencia: ${inv.reason}`
                 });
             });
         }
@@ -1759,20 +1769,37 @@ export default function AdminDashboardScreen() {
                                         <View style={[styles.th, { flex: 2.2, minWidth: 200, justifyContent: 'center' }]}><Text style={[styles.thText, { textAlign: 'center' }]}>Acciones</Text></View>
                                     </View>
 
-                                    {filteredProspects.map((lead, idx) => (
+                                    {filteredProspects.map((lead, idx) => {
+                                        const isRowCritical = Boolean(lead.isCritical || !lead.phone);
+                                        return (
                                         <View 
                                             key={lead.id}
                                             style={[
                                                 styles.tableRow,
-                                                idx % 2 === 1 && { backgroundColor: '#1e293b' }
+                                                idx % 2 === 1 && { backgroundColor: '#1e293b' },
+                                                isRowCritical && { backgroundColor: '#3b1219', borderLeftWidth: 4, borderLeftColor: '#ef4444' }
                                             ]}
                                         >
                                             <View style={{ flex: 2, minWidth: 160 }}>
-                                                <Text style={styles.tdBusinessName}>{lead.businessName || lead.name}</Text>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                                    <Text style={[styles.tdBusinessName, isRowCritical && { color: '#fca5a5' }]}>
+                                                        {lead.businessName || lead.name}
+                                                    </Text>
+                                                    {isRowCritical && (
+                                                        <View style={{ backgroundColor: '#ef4444', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                                            <Text style={{ color: '#fff', fontSize: 9, fontWeight: 'bold' }}>⚠️ CRÍTICO</Text>
+                                                        </View>
+                                                    )}
+                                                </View>
                                                 {lead.contactName && (
                                                     <Text style={{ fontSize: 11, color: '#e2e8f0', fontWeight: '600' }}>👤 {lead.contactName}</Text>
                                                 )}
                                                 <Text style={styles.tdBusinessId}>slug: {lead.id}</Text>
+                                                {lead.criticalReason && (
+                                                    <Text style={{ fontSize: 10, color: '#f87171', fontWeight: 'bold', marginTop: 2 }}>
+                                                        Motivo: {lead.criticalReason}
+                                                    </Text>
+                                                )}
                                                 {(lead.zone || lead.province) && (
                                                     <Text style={{ fontSize: 10, color: '#38bdf8', marginTop: 2 }}>
                                                         📍 {[lead.zone, lead.province, lead.country].filter(Boolean).join(', ')}
@@ -1791,8 +1818,8 @@ export default function AdminDashboardScreen() {
                                                 {lead.notes && <Text style={{ fontSize: 10, color: '#94a3b8', fontStyle: 'italic', marginTop: 2 }}>📝 {lead.notes}</Text>}
                                             </View>
                                             <View style={{ flex: 1.5, minWidth: 130 }}>
-                                                <Text style={{ color: '#fff', fontSize: 13, fontWeight: '600' }}>
-                                                    {lead.phone ? `+${lead.phone}` : 'Sin teléfono'}
+                                                <Text style={{ color: isRowCritical && !lead.phone ? '#ef4444' : '#fff', fontSize: 13, fontWeight: '600' }}>
+                                                    {lead.phone ? `+${lead.phone}` : '⚠️ Sin teléfono'}
                                                 </Text>
                                                 {lead.email && <Text style={{ fontSize: 10, color: '#94a3b8' }}>{lead.email}</Text>}
                                             </View>
@@ -1832,19 +1859,21 @@ export default function AdminDashboardScreen() {
                                             <View style={{ flex: 2.2, minWidth: 200, flexDirection: 'row', gap: 6, justifyContent: 'center', alignItems: 'center' }}>
                                                 <Pressable
                                                     style={{
-                                                        backgroundColor: '#25D366',
+                                                        backgroundColor: lead.phone ? '#25D366' : '#64748b',
                                                         paddingHorizontal: 10,
                                                         paddingVertical: 6,
                                                         borderRadius: 6,
                                                         flexDirection: 'row',
                                                         alignItems: 'center',
-                                                        gap: 5
+                                                        gap: 5,
+                                                        opacity: lead.phone ? 1 : 0.6
                                                     }}
+                                                    disabled={!lead.phone}
                                                     onPress={() => handleSendWhatsAppLead(lead)}
                                                 >
                                                     <FontAwesome name="whatsapp" size={13} color="#000" />
                                                     <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>
-                                                        WhatsApp
+                                                        {lead.phone ? 'WhatsApp' : 'Sin Tel'}
                                                     </Text>
                                                 </Pressable>
                                                 <Pressable
@@ -1868,7 +1897,8 @@ export default function AdminDashboardScreen() {
                                                 </Pressable>
                                             </View>
                                         </View>
-                                    ))}
+                                        );
+                                    })}
                                 </View>
                             </ScrollView>
                         );
@@ -2215,32 +2245,47 @@ export default function AdminDashboardScreen() {
                             </View>
 
                             {/* Opción 2: Copiar y pegar directo (Ctrl+C / Ctrl+V) */}
-                            <Text style={{ color: '#cbd5e1', fontSize: 13, marginBottom: 8, lineHeight: 18 }}>
-                                📋 <Text style={{ fontWeight: 'bold', color: '#10b981' }}>Opción 2:</Text> Seleccioná tus filas en Google Sheets o Excel, hacé <Text style={{ fontWeight: 'bold', color: '#38bdf8' }}>Ctrl+C</Text> y pegalas acá con <Text style={{ fontWeight: 'bold', color: '#38bdf8' }}>Ctrl+V</Text>.
-                            </Text>
-                            <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 12 }}>
-                                Columnas recomendadas: <Text style={{ color: '#fff', fontWeight: 'bold' }}>Nombre Negocio | Nombre | Whatsapp | Tarifa | Email | Instagram | Web | Provincia | Zona | Dirección | País</Text>
-                            </Text>
+                            <View style={{ backgroundColor: '#0f172a', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#334155', marginBottom: 15 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                    <FontAwesome name="clipboard" size={14} color="#10b981" />
+                                    <Text style={{ color: '#10b981', fontSize: 13, fontWeight: 'bold' }}>Opción 2: Copiar y Pegar directo (Ctrl+C / Ctrl+V)</Text>
+                                </View>
+                                <Text style={{ color: '#cbd5e1', fontSize: 12, marginBottom: 8, lineHeight: 18 }}>
+                                    Seleccioná tus filas en Google Sheets o Excel, hacé <Text style={{ fontWeight: 'bold', color: '#38bdf8' }}>Ctrl+C</Text> y pegalas acá abajo con <Text style={{ fontWeight: 'bold', color: '#38bdf8' }}>Ctrl+V</Text>.
+                                </Text>
 
-                            <TextInput
-                                style={{
-                                    backgroundColor: '#0f172a',
-                                    color: '#fff',
-                                    borderWidth: 1,
-                                    borderColor: '#475569',
-                                    borderRadius: 8,
-                                    padding: 12,
-                                    fontSize: 12,
-                                    height: 120,
-                                    textAlignVertical: 'top',
-                                    fontFamily: Platform.OS === 'web' ? 'monospace' : undefined
-                                }}
-                                placeholder="Pegá acá las filas copiadas de Google Sheets..."
-                                placeholderTextColor="#64748b"
-                                multiline={true}
-                                value={pasteRawText}
-                                onChangeText={handleParsePastedData}
-                            />
+                                {/* Mini tabla guía con las 11 columnas */}
+                                <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 4, fontWeight: 'bold' }}>Orden oficial de columnas detectadas:</Text>
+                                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 10 }}>
+                                    <View style={{ flexDirection: 'row', backgroundColor: '#1e293b', borderRadius: 6, borderWidth: 1, borderColor: '#475569', overflow: 'hidden' }}>
+                                        {['0: Nombre Negocio', '1: Nombre', '2: Whatsapp', '3: Tarifa', '4: Email', '5: Instagram', '6: Web', '7: Provincia', '8: Zona', '9: Dirección', '10: País'].map((h, i) => (
+                                            <View key={i} style={{ paddingHorizontal: 8, paddingVertical: 4, borderRightWidth: i < 10 ? 1 : 0, borderRightColor: '#334155', backgroundColor: i === 2 ? '#1e3a8a' : 'transparent' }}>
+                                                <Text style={{ color: i === 2 ? '#93c5fd' : '#cbd5e1', fontSize: 10, fontWeight: 'bold' }}>{h}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                </ScrollView>
+
+                                <TextInput
+                                    style={{
+                                        backgroundColor: '#1e293b',
+                                        color: '#fff',
+                                        borderWidth: 1,
+                                        borderColor: '#475569',
+                                        borderRadius: 8,
+                                        padding: 12,
+                                        fontSize: 12,
+                                        height: 120,
+                                        textAlignVertical: 'top',
+                                        fontFamily: Platform.OS === 'web' ? 'monospace' : undefined
+                                    }}
+                                    placeholder="Pegá acá las filas copiadas (ej: Carnicería Don Juan [Tab] Juan [Tab] 1123456789...)"
+                                    placeholderTextColor="#64748b"
+                                    multiline={true}
+                                    value={pasteRawText}
+                                    onChangeText={handleParsePastedData}
+                                />
+                            </View>
 
                             {/* Asignar colaborador por defecto para los que no tengan en el excel */}
                             <View style={{ marginTop: 12, flexDirection: 'row', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
@@ -2343,27 +2388,40 @@ export default function AdminDashboardScreen() {
 
                                     {/* Incompletos: Preguntar si los quiere añadir igualmente */}
                                     {parsedPreview.invalidRows.length > 0 && (
-                                        <View style={{ marginBottom: 15, backgroundColor: '#2d1519', padding: 10, borderRadius: 8, borderColor: '#dc2626', borderWidth: 1 }}>
-                                            <Text style={{ color: '#fca5a5', fontSize: 12, fontWeight: 'bold', marginBottom: 4 }}>
-                                                ⚠️ Hay {parsedPreview.invalidRows.length} fila(s) incompleta(s):
-                                            </Text>
-                                            {parsedPreview.invalidRows.slice(0, 3).map((inv, i) => (
-                                                <Text key={i} style={{ color: '#fecaca', fontSize: 11, marginVertical: 1 }}>
-                                                    • "{inv.raw}" ➔ Motivo: {inv.reason}
+                                        <View style={{ marginBottom: 15, backgroundColor: '#2d1519', padding: 12, borderRadius: 8, borderColor: '#dc2626', borderWidth: 1 }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                                                <FontAwesome name="exclamation-circle" size={16} color="#ef4444" />
+                                                <Text style={{ color: '#fca5a5', fontSize: 13, fontWeight: 'bold' }}>
+                                                    Hay {parsedPreview.invalidRows.length} fila(s) incompleta(s) / con advertencias:
                                                 </Text>
+                                            </View>
+                                            {parsedPreview.invalidRows.slice(0, 5).map((inv, i) => (
+                                                <View key={i} style={{ backgroundColor: '#1f1013', padding: 8, borderRadius: 6, marginVertical: 3, borderWidth: 1, borderColor: '#7f1d1d' }}>
+                                                    <Text style={{ color: '#fecaca', fontSize: 11, fontFamily: Platform.OS === 'web' ? 'monospace' : undefined }}>
+                                                        📄 {inv.raw}
+                                                    </Text>
+                                                    <View style={{ marginTop: 4, flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                        <View style={{ backgroundColor: '#dc2626', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 3 }}>
+                                                            <Text style={{ color: '#fff', fontSize: 9, fontWeight: 'bold' }}>MOTIVO CRÍTICO</Text>
+                                                        </View>
+                                                        <Text style={{ color: '#f87171', fontSize: 11, fontWeight: 'bold' }}>
+                                                            {inv.reason}
+                                                        </Text>
+                                                    </View>
+                                                </View>
                                             ))}
                                             
                                             <Pressable
-                                                style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 6 }}
+                                                style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 8, backgroundColor: '#3b1219', padding: 8, borderRadius: 6 }}
                                                 onPress={() => setIncludeIncompleteLeads(!includeIncompleteLeads)}
                                             >
                                                 <FontAwesome 
                                                     name={includeIncompleteLeads ? "check-square" : "square-o"} 
-                                                    size={16} 
-                                                    color="#fca5a5" 
+                                                    size={18} 
+                                                    color="#f87171" 
                                                 />
-                                                <Text style={{ color: '#fca5a5', fontSize: 11, fontWeight: 'bold' }}>
-                                                    ¿Añadirlos igualmente como borradores para editar después?
+                                                <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>
+                                                    Añadirlos igualmente como borradores para editar después (se resaltarán en rojo como críticos en el dashboard)
                                                 </Text>
                                             </Pressable>
                                         </View>
@@ -2387,28 +2445,34 @@ export default function AdminDashboardScreen() {
                             >
                                 <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>Cancelar</Text>
                             </Pressable>
-                            <Pressable
-                                style={{
-                                    paddingHorizontal: 20,
-                                    paddingVertical: 10,
-                                    borderRadius: 8,
-                                    backgroundColor: parsedPreview.newLeads.length > 0 ? '#10b981' : '#64748b',
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    gap: 8
-                                }}
-                                disabled={parsedPreview.newLeads.length === 0 || isImporting}
-                                onPress={handleCommitImport}
-                            >
-                                {isImporting ? (
-                                    <ActivityIndicator size="small" color="#fff" />
-                                ) : (
-                                    <FontAwesome name="check" size={14} color="#fff" />
-                                )}
-                                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>
-                                    Confirmar e Importar {parsedPreview.newLeads.length + (includeIncompleteLeads ? parsedPreview.invalidRows.length : 0)} Leads
-                                </Text>
-                            </Pressable>
+                            {(() => {
+                                const totalToImport = parsedPreview.newLeads.length + (includeIncompleteLeads ? parsedPreview.invalidRows.length : 0);
+                                const canImport = totalToImport > 0 && !isImporting;
+                                return (
+                                    <Pressable
+                                        style={{
+                                            paddingHorizontal: 20,
+                                            paddingVertical: 10,
+                                            borderRadius: 8,
+                                            backgroundColor: canImport ? '#10b981' : '#64748b',
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            gap: 8
+                                        }}
+                                        disabled={!canImport}
+                                        onPress={handleCommitImport}
+                                    >
+                                        {isImporting ? (
+                                            <ActivityIndicator size="small" color="#fff" />
+                                        ) : (
+                                            <FontAwesome name="check" size={14} color="#fff" />
+                                        )}
+                                        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>
+                                            Confirmar e Importar {totalToImport} Leads
+                                        </Text>
+                                    </Pressable>
+                                );
+                            })()}
                         </View>
                     </View>
                 </View>
