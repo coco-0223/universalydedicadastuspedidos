@@ -13,34 +13,41 @@ export default function IniciarDemoScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
 
-    // Función para obtener parámetros tanto de Expo Router como de la URL de navegación (window.location.search)
+    // Función para obtener parámetros tanto de Expo Router como de la URL de navegación en Web
     const getQueryParam = (key: string): string => {
         if (params && params[key]) return params[key].toString();
-        if (typeof window !== 'undefined' && window.location && window.location.search) {
-            const urlParams = new URLSearchParams(window.location.search);
-            return urlParams.get(key) || '';
+        if (typeof window !== 'undefined' && window.location) {
+            const search = window.location.search || '';
+            if (search) {
+                const urlParams = new URLSearchParams(search);
+                const val = urlParams.get(key);
+                if (val) return val;
+            }
+            // También revisar si la URL vino en el hash o path (ej: /iniciar-demo?b=...)
+            const href = window.location.href || '';
+            const qIndex = href.indexOf('?');
+            if (qIndex !== -1) {
+                const queryStr = href.substring(qIndex);
+                const urlParams = new URLSearchParams(queryStr);
+                const val = urlParams.get(key);
+                if (val) return val;
+            }
         }
         return '';
     };
 
     // Códigos de campaña opacos y decodificador automático de precio:
-    // 1. Códigos estándar: 'vp26', 'vip', 'pro' => 20000. Por defecto => 9000.
-    // 2. Códigos automáticos con prefijo 'k' (ej. 'k12' = 12.000, 'k15' = 15.000, 'k18' = 18.000, 'k25' = 25.000):
-    //    Totalmente transparente para el cliente (parece un identificador de campaña) pero dinámico para vos.
-    const promoCode = (getQueryParam('c') || getQueryParam('promo') || getQueryParam('plan')).toLowerCase();
-
-    let planPrice = 9000;
-    if (promoCode === 'vp26' || promoCode === 'vip' || promoCode === 'pro') {
-        planPrice = 20000;
-    } else {
-        const kMatch = promoCode.match(/^k(\d+)$/);
+    const [promoCode, setPromoCode] = useState(() => (getQueryParam('c') || getQueryParam('promo') || getQueryParam('plan')).toLowerCase());
+    const [planPrice, setPlanPrice] = useState(() => {
+        const c = (getQueryParam('c') || getQueryParam('promo') || getQueryParam('plan')).toLowerCase();
+        if (c === 'vp26' || c === 'vip' || c === 'pro') return 20000;
+        const kMatch = c.match(/^k(\d+)$/);
         if (kMatch) {
             const parsedK = parseInt(kMatch[1], 10);
-            if (!isNaN(parsedK) && parsedK > 0) {
-                planPrice = parsedK * 1000; // ej: k14 => 14000
-            }
+            if (!isNaN(parsedK) && parsedK > 0) return parsedK * 1000;
         }
-    }
+        return 9000;
+    });
 
     const isProPlan = planPrice >= 20000;
     const originalPrice = Math.round(planPrice * 1.8 / 1000) * 1000; // Precio tachado automático con descuento visible
@@ -48,12 +55,9 @@ export default function IniciarDemoScreen() {
     const { loadBusinessById, setUser } = useAppContext();
 
     // Precarga automática desde los parámetros del link de WhatsApp (b=usuario, name=Nombre) o de la URL directa en web
-    const initialName = getQueryParam('name') || getQueryParam('n');
-    const initialUsername = getQueryParam('b') || getQueryParam('u');
-    const isDirectInvite = Boolean(initialUsername || initialName);
-
-    const [businessName, setBusinessName] = useState(initialName);
-    const [username, setUsername] = useState(initialUsername);
+    const [businessName, setBusinessName] = useState(() => getQueryParam('name') || getQueryParam('n') || '');
+    const [username, setUsername] = useState(() => getQueryParam('b') || getQueryParam('u') || '');
+    const [isDirectInvite, setIsDirectInvite] = useState(() => Boolean(getQueryParam('b') || getQueryParam('u') || getQueryParam('name') || getQueryParam('n')));
     const [ownerPhone, setOwnerPhone] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -62,11 +66,30 @@ export default function IniciarDemoScreen() {
     useEffect(() => {
         const nameFromUrl = getQueryParam('name') || getQueryParam('n');
         const userFromUrl = getQueryParam('b') || getQueryParam('u');
-        if (nameFromUrl && !businessName) {
+        const codeFromUrl = (getQueryParam('c') || getQueryParam('promo') || getQueryParam('plan')).toLowerCase();
+
+        if (nameFromUrl) {
             setBusinessName(nameFromUrl);
         }
-        if (userFromUrl && !username) {
+        if (userFromUrl) {
             setUsername(userFromUrl);
+        }
+        if (nameFromUrl || userFromUrl) {
+            setIsDirectInvite(true);
+        }
+        if (codeFromUrl) {
+            setPromoCode(codeFromUrl);
+            if (codeFromUrl === 'vp26' || codeFromUrl === 'vip' || codeFromUrl === 'pro') {
+                setPlanPrice(20000);
+            } else {
+                const kMatch = codeFromUrl.match(/^k(\d+)$/);
+                if (kMatch) {
+                    const parsedK = parseInt(kMatch[1], 10);
+                    if (!isNaN(parsedK) && parsedK > 0) {
+                        setPlanPrice(parsedK * 1000);
+                    }
+                }
+            }
         }
     }, [params]);
     
