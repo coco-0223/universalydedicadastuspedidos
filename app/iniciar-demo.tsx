@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -13,11 +13,21 @@ export default function IniciarDemoScreen() {
     const router = useRouter();
     const params = useLocalSearchParams();
 
+    // Función para obtener parámetros tanto de Expo Router como de la URL de navegación (window.location.search)
+    const getQueryParam = (key: string): string => {
+        if (params && params[key]) return params[key].toString();
+        if (typeof window !== 'undefined' && window.location && window.location.search) {
+            const urlParams = new URLSearchParams(window.location.search);
+            return urlParams.get(key) || '';
+        }
+        return '';
+    };
+
     // Códigos de campaña opacos y decodificador automático de precio:
     // 1. Códigos estándar: 'vp26', 'vip', 'pro' => 20000. Por defecto => 9000.
     // 2. Códigos automáticos con prefijo 'k' (ej. 'k12' = 12.000, 'k15' = 15.000, 'k18' = 18.000, 'k25' = 25.000):
     //    Totalmente transparente para el cliente (parece un identificador de campaña) pero dinámico para vos.
-    const promoCode = (params.c || params.promo || params.plan || '').toString().toLowerCase();
+    const promoCode = (getQueryParam('c') || getQueryParam('promo') || getQueryParam('plan')).toLowerCase();
 
     let planPrice = 9000;
     if (promoCode === 'vp26' || promoCode === 'vip' || promoCode === 'pro') {
@@ -37,9 +47,9 @@ export default function IniciarDemoScreen() {
 
     const { loadBusinessById, setUser } = useAppContext();
 
-    // Precarga automática desde los parámetros del link de WhatsApp (b=usuario, name=Nombre)
-    const initialName = (params.name || params.n || '').toString();
-    const initialUsername = (params.b || params.u || '').toString();
+    // Precarga automática desde los parámetros del link de WhatsApp (b=usuario, name=Nombre) o de la URL directa en web
+    const initialName = getQueryParam('name') || getQueryParam('n');
+    const initialUsername = getQueryParam('b') || getQueryParam('u');
     const isDirectInvite = Boolean(initialUsername || initialName);
 
     const [businessName, setBusinessName] = useState(initialName);
@@ -47,6 +57,18 @@ export default function IniciarDemoScreen() {
     const [ownerPhone, setOwnerPhone] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    
+    // Si los params llegan luego de la hidratación inicial de Expo Router en Web
+    useEffect(() => {
+        const nameFromUrl = getQueryParam('name') || getQueryParam('n');
+        const userFromUrl = getQueryParam('b') || getQueryParam('u');
+        if (nameFromUrl && !businessName) {
+            setBusinessName(nameFromUrl);
+        }
+        if (userFromUrl && !username) {
+            setUsername(userFromUrl);
+        }
+    }, [params]);
     
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
@@ -236,7 +258,7 @@ export default function IniciarDemoScreen() {
             await AsyncStorage.setItem('tp_trial_created', 'true');
 
             await loadBusinessById(safeUsername);
-            setUser({ id: uid, email: demoEmail, role: 'business', name: '', surname: '', address: '' });
+            setUser({ id: uid, email: finalAuthEmail, role: 'business', name: '', surname: '', address: '' });
             router.replace('/(business)/admin');
 
         } catch (err: any) {
