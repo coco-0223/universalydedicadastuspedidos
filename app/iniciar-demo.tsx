@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, ActivityIndicator, Alert, Platform } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getAuth, createUserWithEmailAndPassword } from 'firebase/auth';
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { getFirestore, doc, setDoc, getDoc, collection, addDoc } from 'firebase/firestore';
 import { FontAwesome } from '@expo/vector-icons';
 import { app } from '../src/config/firebase';
@@ -62,6 +62,79 @@ export default function IniciarDemoScreen() {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [leadRecord, setLeadRecord] = useState<any>(null);
+
+    // Estado de pertenencia: 'checking' | 'owner' | 'claimed_by_other' | 'available'
+    const [existingOwnership, setExistingOwnership] = useState<'checking' | 'owner' | 'claimed_by_other' | 'available'>('available');
+    const [claimedBusinessName, setClaimedBusinessName] = useState('');
+    
+    // Función para verificar si el negocio ya fue creado y si este dispositivo es el dueño
+    const checkBusinessOwnership = async (slug: string) => {
+        if (!slug) return;
+        try {
+            const db = getFirestore(app);
+            const businessDoc = await getDoc(doc(db, 'businesses', slug));
+
+            if (businessDoc.exists()) {
+                const bData = businessDoc.data();
+                const bProfile = bData.profile || {};
+                setClaimedBusinessName(bProfile.name || slug);
+
+                // Comprobar si ESTE dispositivo es el legítimo creador
+                const savedDeviceKey = await AsyncStorage.getItem('tp_device_key_' + slug) || await AsyncStorage.getItem('tp_device_key');
+                const savedBusinessId = await AsyncStorage.getItem('tp_trial_business_id');
+
+                const isAuthorizedDevice = Boolean(
+                    (bData.deviceKey && bData.deviceKey === savedDeviceKey) ||
+                    (bProfile.deviceKey && bProfile.deviceKey === savedDeviceKey) ||
+                    (savedBusinessId === slug)
+                );
+
+                if (isAuthorizedDevice) {
+                    // Es el cliente legítimo en su mismo teléfono/navegador
+                    setExistingOwnership('owner');
+                    // Reingreso automático y directo
+                    handleReEnterDemo(slug, bProfile.name || slug);
+                } else {
+                    // Es OTRA persona a la que le reenviaron el link
+                    setExistingOwnership('claimed_by_other');
+                }
+            } else {
+                setExistingOwnership('available');
+            }
+        } catch (e) {
+            console.warn('Error checking business ownership:', e);
+        }
+    };
+
+    // Reingresar a la demo existente del cliente
+    const handleReEnterDemo = async (slug: string, name?: string) => {
+        setLoading(true);
+        setError('');
+        try {
+            const auth = getAuth(app);
+            const finalAuthEmail = `${slug}@demo.tuspedidos.com`;
+            const finalAuthPassword = 'TusPedidosDemo2026';
+
+            try {
+                const userCredential = await signInWithEmailAndPassword(auth, finalAuthEmail, finalAuthPassword);
+                const uid = userCredential.user.uid;
+                await loadBusinessById(slug);
+                setUser({ id: uid, email: finalAuthEmail, role: 'business', name: name || '', surname: '', address: '' });
+                router.replace('/(business)/admin');
+                return;
+            } catch (signInErr: any) {
+                console.log('SignIn error, attempting direct load:', signInErr);
+                await loadBusinessById(slug);
+                router.replace('/(business)/admin');
+                return;
+            }
+        } catch (err: any) {
+            console.error('Error re-entering demo:', err);
+            setError('Tu catálogo ya está activo. Podés ingresar desde la pantalla de login con tu usuario: ' + slug);
+        } finally {
+            setLoading(false);
+        }
+    };
     
     // Si los params llegan luego de la hidratación inicial de Expo Router en Web o si viene 'lead' para leer desde Firestore
     useEffect(() => {
@@ -92,6 +165,11 @@ export default function IniciarDemoScreen() {
                     }
                 }
             }
+        }
+
+        const targetSlug = (userFromUrl || leadId || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (targetSlug) {
+            checkBusinessOwnership(targetSlug);
         }
 
         // Consultar los datos completos del prospecto en Firestore (SuperAdmin)
@@ -177,21 +255,23 @@ export default function IniciarDemoScreen() {
 
         try {
             // Capa 2: Huella local (AsyncStorage / LocalStorage)
+            // Solo bloquear si intentan crear OTRO negocio diferente en el mismo dispositivo
             const localTrialUsed = await AsyncStorage.getItem('tp_trial_created');
-            if (localTrialUsed) {
+            const localTrialBusinessId = await AsyncStorage.getItem('tp_trial_business_id');
+            if (localTrialUsed && localTrialBusinessId && localTrialBusinessId !== safeUsername) {
                 // Registrar intento bloqueado para el SuperAdmin
                 try {
                     const db = getFirestore(app);
                     await addDoc(collection(db, 'blocked_attempts'), {
                         businessName: businessName.trim(),
                         username: safeUsername,
-                        reason: 'Dispositivo ya utilizó prueba gratuita (Local)',
+                        reason: 'Dispositivo ya utilizó prueba gratuita para otro negocio (Local)',
                         type: 'device',
                         createdAt: new Date().toISOString()
                     });
                 } catch (e) {}
 
-                setError('Ya se ha creado un período de prueba desde este dispositivo. Si deseas extender o activar tu plan, comunícate con soporte.');
+                setError('Ya se ha creado un período de prueba desde este dispositivo para otro negocio. Si deseas extender o activar tu plan, comunícate con soporte.');
                 setLoading(false);
                 return;
             }
@@ -210,8 +290,8 @@ export default function IniciarDemoScreen() {
                 if (ipSnap.exists()) {
                     const ipData = ipSnap.data();
                     const lastCreated = ipData?.createdAt ? new Date(ipData.createdAt) : null;
-                    // Límite de 30 días entre pruebas por IP
-                    if (lastCreated) {
+                    // Límite de 30 días entre pruebas por IP para NEGOCIOS DISTINTOS
+                    if (lastCreated && ipData.businessId !== safeUsername) {
                         const daysDiff = (Date.now() - lastCreated.getTime()) / (1000 * 60 * 60 * 24);
                         if (daysDiff < 30) {
                             // Registrar intento bloqueado para el SuperAdmin
@@ -239,9 +319,29 @@ export default function IniciarDemoScreen() {
             const businessRef = doc(db, 'businesses', safeUsername);
             const snap = await getDoc(businessRef);
             if (snap.exists()) {
-                setError('Ese usuario ya está en uso. Por favor elegí otro.');
-                setLoading(false);
-                return;
+                const bData = snap.data();
+                const bProfile = bData.profile || {};
+                const savedDeviceKey = await AsyncStorage.getItem('tp_device_key_' + safeUsername) || await AsyncStorage.getItem('tp_device_key');
+                const savedBusinessId = await AsyncStorage.getItem('tp_trial_business_id');
+
+                const isAuthorizedDevice = Boolean(
+                    (bData.deviceKey && bData.deviceKey === savedDeviceKey) ||
+                    (bProfile.deviceKey && bProfile.deviceKey === savedDeviceKey) ||
+                    (savedBusinessId === safeUsername)
+                );
+
+                if (isAuthorizedDevice) {
+                    // Es el mismo cliente legítimo volviendo a entrar desde su propio dispositivo
+                    await handleReEnterDemo(safeUsername, businessName.trim());
+                    return;
+                } else {
+                    // Es OTRA persona a la que le reenviaron el link: BLOQUEO
+                    setExistingOwnership('claimed_by_other');
+                    setClaimedBusinessName(bProfile.name || safeUsername);
+                    setError('Este enlace exclusivo ya fue activado por su titular.');
+                    setLoading(false);
+                    return;
+                }
             }
 
             // Determinar credenciales según si es directo de WhatsApp o registro orgánico
@@ -269,6 +369,9 @@ export default function IniciarDemoScreen() {
             const expiresAt = new Date();
             expiresAt.setDate(expiresAt.getDate() + 7); // 7 days trial
 
+            // Clave única de dispositivo para vincular este teléfono/navegador con su tienda
+            const deviceKey = 'dev_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+
             const newProfile: BusinessProfile = {
                 id: safeUsername,
                 name: businessName.trim(),
@@ -284,7 +387,11 @@ export default function IniciarDemoScreen() {
 
             await setDoc(businessRef, {
                 ownerId: uid,
-                profile: newProfile,
+                deviceKey: deviceKey,
+                profile: {
+                    ...newProfile,
+                    deviceKey: deviceKey
+                },
                 settings: {
                     categories: [],
                     currency: '$',
@@ -310,6 +417,10 @@ export default function IniciarDemoScreen() {
                 }, { merge: true });
             }
             await AsyncStorage.setItem('tp_trial_created', 'true');
+            await AsyncStorage.setItem('tp_trial_business_id', safeUsername);
+            await AsyncStorage.setItem('tp_device_key_' + safeUsername, deviceKey);
+            await AsyncStorage.setItem('tp_device_key', deviceKey);
+            await AsyncStorage.setItem('tp_owner_email_' + safeUsername, finalAuthEmail);
 
             await loadBusinessById(safeUsername);
             setUser({ id: uid, email: finalAuthEmail, role: 'business', name: '', surname: '', address: '' });
@@ -318,6 +429,13 @@ export default function IniciarDemoScreen() {
         } catch (err: any) {
             console.error(err);
             if (err.code === 'auth/email-already-in-use') {
+                // Si el email ya existía, comprobar si es el dueño para reingresar inmediatamente
+                const savedDeviceKey = await AsyncStorage.getItem('tp_device_key_' + safeUsername) || await AsyncStorage.getItem('tp_device_key');
+                const savedBusinessId = await AsyncStorage.getItem('tp_trial_business_id');
+                if (savedBusinessId === safeUsername || savedDeviceKey) {
+                    await handleReEnterDemo(safeUsername, businessName.trim());
+                    return;
+                }
                 setError('Ese usuario ya está en uso por otro demo.');
             } else {
                 setError('Ocurrió un error al crear el demo. Intentá de nuevo.');
@@ -326,6 +444,87 @@ export default function IniciarDemoScreen() {
             setLoading(false);
         }
     };
+
+    // Caso 1: Enlace abierto por OTRA persona a quien le reenviaron el WhatsApp
+    if (existingOwnership === 'claimed_by_other') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.card}>
+                    <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                            <FontAwesome name="lock" size={30} color="#ef4444" />
+                        </View>
+                        <Text style={[styles.title, { textAlign: 'center' }]}>Invitación Ya Activada</Text>
+                        <Text style={[styles.subtitle, { textAlign: 'center', marginTop: 8 }]}>
+                            Este enlace ya fue activado y vinculado al titular del negocio <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>"{claimedBusinessName || businessName || username}"</Text>.
+                        </Text>
+                        <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center', marginTop: 8 }}>
+                            Por seguridad, no es posible acceder ni gestionar el panel de otra persona.
+                        </Text>
+                    </View>
+
+                    <View style={{ backgroundColor: '#f0fdf4', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#bbf7d0', marginBottom: 20 }}>
+                        <Text style={{ fontWeight: 'bold', color: '#166534', fontSize: 14, marginBottom: 4, textAlign: 'center' }}>
+                            ¿Querés probar TusPedidos para tu propio negocio?
+                        </Text>
+                        <Text style={{ fontSize: 12, color: '#15803d', textAlign: 'center' }}>
+                            Creá tu propio catálogo digital gratis en 10 segundos y probalo sin compromiso durante 7 días.
+                        </Text>
+                    </View>
+
+                    <Pressable
+                        style={[styles.mainBtn, { backgroundColor: '#0284c7' }]}
+                        onPress={() => {
+                            setExistingOwnership('available');
+                            setUsername('');
+                            setBusinessName('');
+                            setIsDirectInvite(false);
+                            if (typeof window !== 'undefined') {
+                                window.history.replaceState({}, '', '/iniciar-demo');
+                            }
+                        }}
+                    >
+                        <Text style={styles.mainBtnText}>Crear mi Propia Prueba Gratis 🚀</Text>
+                    </Pressable>
+
+                    <Pressable style={{ marginTop: 20, alignItems: 'center' }} onPress={() => router.push('/business-auth')}>
+                        <Text style={{ color: '#64748b', fontWeight: '600', fontSize: 13 }}>¿Ya tenés una cuenta? Ingresá acá</Text>
+                    </Pressable>
+                </View>
+            </View>
+        );
+    }
+
+    // Caso 2: El cliente legítimo vuelve a hacer click en su propio enlace
+    if (existingOwnership === 'owner') {
+        return (
+            <View style={styles.container}>
+                <View style={styles.card}>
+                    <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#f0fdf4', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                            <FontAwesome name="check-circle" size={36} color="#16a34a" />
+                        </View>
+                        <Text style={[styles.title, { textAlign: 'center' }]}>¡Bienvenido de nuevo!</Text>
+                        <Text style={[styles.subtitle, { textAlign: 'center', marginTop: 8 }]}>
+                            Tu catálogo de <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>"{businessName || username}"</Text> ya está activo en tu dispositivo.
+                        </Text>
+                    </View>
+
+                    <Pressable
+                        style={styles.mainBtn}
+                        onPress={() => handleReEnterDemo(username, businessName)}
+                        disabled={loading}
+                    >
+                        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.mainBtnText}>Entrar a mi Panel 📋</Text>}
+                    </Pressable>
+
+                    <Pressable style={{ marginTop: 20, alignItems: 'center' }} onPress={() => router.push('/business-auth')}>
+                        <Text style={{ color: '#3b82f6', fontWeight: '600' }}>Ingresar con otra cuenta</Text>
+                    </Pressable>
+                </View>
+            </View>
+        );
+    }
 
     return (
         <View style={styles.container}>
