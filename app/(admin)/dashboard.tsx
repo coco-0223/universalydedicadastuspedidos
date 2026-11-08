@@ -1043,36 +1043,66 @@ export default function AdminDashboardScreen() {
         }
     };
 
-    // Guardar edición manual de un lead
+    // Guardar edición manual de un lead o creación de un nuevo prospecto
     const handleSaveEditedLead = async () => {
         if (!editingLead) return;
+        const bName = (editingLead.businessName || editingLead.name || '').trim();
+        if (!bName) {
+            if (Platform.OS === 'web') alert('El nombre del negocio es obligatorio.');
+            else Alert.alert('Error', 'El nombre del negocio es obligatorio.');
+            return;
+        }
+
         try {
             setLoading(true);
             const now = new Date().toISOString();
-            const updated = {
-                businessName: (editingLead.businessName || editingLead.name).trim(),
+            const cleanPhone = sanitizeWhatsAppPhone(editingLead.phone);
+            const isNew = !prospects.some(p => p.id === editingLead.id);
+            const leadId = editingLead.id || nameToSlug(bName) || `lead-${Date.now()}`;
+            const price = editingLead.planPrice || 9000;
+
+            const updated: ProspectLead = {
+                id: leadId,
+                businessName: bName,
                 contactName: editingLead.contactName?.trim() || undefined,
-                name: (editingLead.businessName || editingLead.name).trim(),
-                phone: sanitizeWhatsAppPhone(editingLead.phone),
+                name: bName,
+                phone: cleanPhone,
                 email: editingLead.email?.trim() || undefined,
+                instagram: editingLead.instagram?.trim() || undefined,
+                website: editingLead.website?.trim() || undefined,
                 province: editingLead.province?.trim() || undefined,
                 zone: editingLead.zone?.trim() || undefined,
                 address: editingLead.address?.trim() || undefined,
                 country: editingLead.country?.trim() || undefined,
-                planPrice: editingLead.planPrice || 9000,
-                priceCode: priceToOpaqueCode(editingLead.planPrice || 9000),
-                assignedTo: editingLead.assignedTo?.trim() || undefined,
+                planPrice: price,
+                priceCode: priceToOpaqueCode(price),
+                assignedTo: editingLead.assignedTo?.trim() || (user?.email || undefined),
+                createdBy: editingLead.createdBy || (user?.email || PRIMARY_SUPERADMIN_EMAIL),
+                status: editingLead.status || 'pending',
                 notes: editingLead.notes?.trim() || undefined,
-                updatedAt: now
+                createdAt: editingLead.createdAt || now,
+                updatedAt: now,
+                isCritical: !cleanPhone,
+                criticalReason: !cleanPhone ? 'Sin número de WhatsApp verificado' : undefined
             };
-            await updateDoc(doc(db, 'prospect_leads', editingLead.id), updated);
-            setProspects(prev => prev.map(p => p.id === editingLead.id ? { ...p, ...updated } : p));
+
+            await setDoc(doc(db, 'prospect_leads', leadId), updated, { merge: true });
+
+            setProspects(prev => {
+                if (isNew) {
+                    return [updated, ...prev];
+                }
+                return prev.map(p => p.id === leadId ? updated : p);
+            });
+
             setIsEditLeadModalOpen(false);
             setEditingLead(null);
-            if (Platform.OS === 'web') alert('Prospecto actualizado.');
+            const successMsg = isNew ? `¡Prospecto "${bName}" añadido exitosamente!` : 'Prospecto actualizado con éxito.';
+            if (Platform.OS === 'web') alert(successMsg);
+            else Alert.alert('Éxito', successMsg);
         } catch (e: any) {
             console.error('Error guardando lead:', e);
-            Alert.alert('Error', 'No se pudo actualizar el prospecto.');
+            Alert.alert('Error', 'No se pudo guardar el prospecto.');
         } finally {
             setLoading(false);
         }
@@ -1518,11 +1548,41 @@ export default function AdminDashboardScreen() {
                     {/* Botones de acción superior */}
                     <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                         <Pressable 
-                            style={{ backgroundColor: '#0284c7', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 5 }}
+                            style={{ backgroundColor: '#10b981', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                            onPress={() => {
+                                setEditingLead({
+                                    id: '',
+                                    businessName: '',
+                                    contactName: '',
+                                    name: '',
+                                    phone: '',
+                                    planPrice: 9000,
+                                    priceCode: 'fn26',
+                                    email: '',
+                                    instagram: '',
+                                    website: '',
+                                    province: '',
+                                    zone: '',
+                                    address: '',
+                                    country: 'Argentina',
+                                    assignedTo: user?.email || '',
+                                    status: 'pending',
+                                    createdAt: new Date().toISOString(),
+                                    updatedAt: new Date().toISOString()
+                                });
+                                setIsEditLeadModalOpen(true);
+                            }}
+                        >
+                            <FontAwesome name="plus-circle" size={13} color="#000" />
+                            <Text style={{ color: '#000', fontSize: 11, fontWeight: 'bold' }}>+ Añadir Prospecto Manual</Text>
+                        </Pressable>
+
+                        <Pressable 
+                            style={{ backgroundColor: '#0284c7', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 5 }}
                             onPress={downloadProspectExcelFile}
                         >
                             <FontAwesome name="file-excel-o" size={12} color="#fff" />
-                            <Text style={{ color: '#fff', fontSize: 11, fontWeight: 'bold' }}>Descargar Plantilla Excel (.xlsx)</Text>
+                            <Text style={{ color: '#fff', fontSize: 11, fontWeight: 'bold' }}>Descargar Plantilla (.xlsx)</Text>
                         </Pressable>
 
                         <Text style={{ fontSize: 11, color: '#94a3b8', marginLeft: 6 }}>Limpieza:</Text>
@@ -2647,7 +2707,7 @@ export default function AdminDashboardScreen() {
                 </View>
             </Modal>
 
-            {/* Modal de Edición Manual de Lead */}
+            {/* Modal de Creación / Edición Manual de Lead con diseño estilo Planilla Excel */}
             <Modal
                 visible={isEditLeadModalOpen}
                 animationType="fade"
@@ -2663,172 +2723,263 @@ export default function AdminDashboardScreen() {
                 }}>
                     <View style={{
                         width: '100%',
-                        maxWidth: 550,
+                        maxWidth: 900,
                         backgroundColor: '#1e293b',
                         borderRadius: 16,
                         borderWidth: 1,
                         borderColor: '#334155',
-                        padding: 16
+                        maxHeight: '90%',
+                        display: 'flex',
+                        flexDirection: 'column'
                     }}>
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15, borderBottomWidth: 1, borderBottomColor: '#334155', paddingBottom: 10 }}>
-                            <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>✏️ Modificar Prospecto / Lead</Text>
-                            <Pressable onPress={() => setIsEditLeadModalOpen(false)}>
-                                <FontAwesome name="times" size={16} color="#94a3b8" />
+                        {/* Header estilo Excel */}
+                        <View style={{
+                            padding: 16,
+                            borderBottomWidth: 1,
+                            borderBottomColor: '#334155',
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            backgroundColor: '#0f172a',
+                            borderTopLeftRadius: 16,
+                            borderTopRightRadius: 16
+                        }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                <View style={{ backgroundColor: '#10b981', padding: 6, borderRadius: 6 }}>
+                                    <FontAwesome name="table" size={16} color="#000" />
+                                </View>
+                                <View>
+                                    <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>
+                                        {editingLead && !prospects.some(p => p.id === editingLead.id) 
+                                            ? 'Añadir Nuevo Prospecto (Fila de Planilla)' 
+                                            : 'Modificar Prospecto'}
+                                    </Text>
+                                    <Text style={{ color: '#94a3b8', fontSize: 11 }}>
+                                        Ingresá los datos organizados por columnas exactas como en Excel / Google Sheets
+                                    </Text>
+                                </View>
+                            </View>
+                            <Pressable onPress={() => setIsEditLeadModalOpen(false)} style={{ padding: 6 }}>
+                                <FontAwesome name="times" size={18} color="#94a3b8" />
                             </Pressable>
                         </View>
 
                         {editingLead && (
-                            <View style={{ gap: 10 }}>
-                                <View style={{ flexDirection: 'row', gap: 10 }}>
-                                    <View style={{ flex: 1.2 }}>
-                                        <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>Nombre Negocio:</Text>
-                                        <TextInput
-                                            style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
-                                            value={editingLead.businessName || editingLead.name}
-                                            onChangeText={(txt) => setEditingLead({ ...editingLead, businessName: txt, name: txt })}
-                                        />
+                            <ScrollView style={{ padding: 16 }}>
+                                {/* Vista en Rejilla tipo Celdas de Excel */}
+                                <View style={{ borderWidth: 1, borderColor: '#475569', borderRadius: 8, overflow: 'hidden', backgroundColor: '#0f172a', marginBottom: 15 }}>
+                                    <View style={{ backgroundColor: '#1e293b', paddingHorizontal: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#475569', flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <FontAwesome name="file-excel-o" size={13} color="#10b981" />
+                                        <Text style={{ color: '#6ee7b7', fontSize: 11, fontWeight: 'bold', letterSpacing: 0.5 }}>
+                                            CAMPOS DE LA PLANILLA OFICIAL (11 COLUMNAS)
+                                        </Text>
                                     </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>Nombre Persona / Contacto:</Text>
-                                        <TextInput
-                                            style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
-                                            placeholder="ej: Juan Pérez"
-                                            placeholderTextColor="#64748b"
-                                            value={editingLead.contactName || ''}
-                                            onChangeText={(contactName) => setEditingLead({ ...editingLead, contactName })}
-                                        />
+
+                                    {/* Fila 1: Negocio y Contacto */}
+                                    <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#334155', flexWrap: 'wrap' }}>
+                                        <View style={{ flex: 1.2, minWidth: 260, padding: 10, borderRightWidth: 1, borderRightColor: '#334155' }}>
+                                            <Text style={{ color: '#38bdf8', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                [Col 0] Nombre Negocio *
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
+                                                placeholder="ej: Carnicería Don Juan"
+                                                placeholderTextColor="#64748b"
+                                                value={editingLead.businessName || editingLead.name}
+                                                onChangeText={(txt) => setEditingLead({ ...editingLead, businessName: txt, name: txt })}
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1, minWidth: 240, padding: 10 }}>
+                                            <Text style={{ color: '#cbd5e1', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                [Col 1] Nombre de la Persona
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
+                                                placeholder="ej: Juan Carlos"
+                                                placeholderTextColor="#64748b"
+                                                value={editingLead.contactName || ''}
+                                                onChangeText={(contactName) => setEditingLead({ ...editingLead, contactName })}
+                                            />
+                                        </View>
+                                    </View>
+
+                                    {/* Fila 2: WhatsApp y Tarifa */}
+                                    <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#334155', flexWrap: 'wrap' }}>
+                                        <View style={{ flex: 1.2, minWidth: 260, padding: 10, borderRightWidth: 1, borderRightColor: '#334155' }}>
+                                            <Text style={{ color: '#25D366', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                [Col 2] WhatsApp (11xxxx o 15xxxx o +54...)
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
+                                                placeholder="ej: 1123456789 o 3519876543"
+                                                placeholderTextColor="#64748b"
+                                                value={editingLead.phone}
+                                                onChangeText={(phone) => setEditingLead({ ...editingLead, phone })}
+                                                keyboardType="phone-pad"
+                                            />
+                                            <Text style={{ color: '#94a3b8', fontSize: 10, marginTop: 3 }}>
+                                                Se normaliza automáticamente con código de área para enviar con 1 clic.
+                                            </Text>
+                                        </View>
+                                        <View style={{ flex: 1, minWidth: 240, padding: 10 }}>
+                                            <Text style={{ color: '#cbd5e1', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                [Col 3] Tarifa Fijada ($/mes)
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
+                                                placeholder="9000"
+                                                placeholderTextColor="#64748b"
+                                                value={(editingLead.planPrice || 9000).toString()}
+                                                onChangeText={(p) => setEditingLead({ ...editingLead, planPrice: parseInt(p.replace(/[^0-9]/g, ''), 10) || 0 })}
+                                                keyboardType="numeric"
+                                            />
+                                        </View>
+                                    </View>
+
+                                    {/* Fila 3: Email y Redes (Instagram / Web) */}
+                                    <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#334155', flexWrap: 'wrap' }}>
+                                        <View style={{ flex: 1, minWidth: 240, padding: 10, borderRightWidth: 1, borderRightColor: '#334155' }}>
+                                            <Text style={{ color: '#cbd5e1', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                [Col 4] Email Dueño
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
+                                                placeholder="contacto@negocio.com"
+                                                placeholderTextColor="#64748b"
+                                                value={editingLead.email || ''}
+                                                onChangeText={(email) => setEditingLead({ ...editingLead, email })}
+                                                autoCapitalize="none"
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1, minWidth: 240, padding: 10, borderRightWidth: 1, borderRightColor: '#334155' }}>
+                                            <Text style={{ color: '#e1306c', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                [Col 5] Instagram
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
+                                                placeholder="@negocio"
+                                                placeholderTextColor="#64748b"
+                                                value={editingLead.instagram || ''}
+                                                onChangeText={(instagram) => setEditingLead({ ...editingLead, instagram })}
+                                                autoCapitalize="none"
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1, minWidth: 240, padding: 10 }}>
+                                            <Text style={{ color: '#38bdf8', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                [Col 6] Página Web
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
+                                                placeholder="www.negocio.com"
+                                                placeholderTextColor="#64748b"
+                                                value={editingLead.website || ''}
+                                                onChangeText={(website) => setEditingLead({ ...editingLead, website })}
+                                                autoCapitalize="none"
+                                            />
+                                        </View>
+                                    </View>
+
+                                    {/* Fila 4: Ubicación geográfica */}
+                                    <View style={{ flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#334155', flexWrap: 'wrap' }}>
+                                        <View style={{ flex: 1, minWidth: 180, padding: 10, borderRightWidth: 1, borderRightColor: '#334155' }}>
+                                            <Text style={{ color: '#cbd5e1', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                [Col 7] Provincia
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
+                                                placeholder="Buenos Aires"
+                                                placeholderTextColor="#64748b"
+                                                value={editingLead.province || ''}
+                                                onChangeText={(province) => setEditingLead({ ...editingLead, province })}
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1, minWidth: 180, padding: 10, borderRightWidth: 1, borderRightColor: '#334155' }}>
+                                            <Text style={{ color: '#cbd5e1', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                [Col 8] Zona / Localidad
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
+                                                placeholder="Morón, Ramos Mejía, etc."
+                                                placeholderTextColor="#64748b"
+                                                value={editingLead.zone || ''}
+                                                onChangeText={(zone) => setEditingLead({ ...editingLead, zone })}
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1.2, minWidth: 200, padding: 10, borderRightWidth: 1, borderRightColor: '#334155' }}>
+                                            <Text style={{ color: '#cbd5e1', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                [Col 9] Dirección
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
+                                                placeholder="Av. Rivadavia 1234"
+                                                placeholderTextColor="#64748b"
+                                                value={editingLead.address || ''}
+                                                onChangeText={(address) => setEditingLead({ ...editingLead, address })}
+                                            />
+                                        </View>
+                                        <View style={{ flex: 0.8, minWidth: 140, padding: 10 }}>
+                                            <Text style={{ color: '#cbd5e1', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                [Col 10] País
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
+                                                placeholder="Argentina"
+                                                placeholderTextColor="#64748b"
+                                                value={editingLead.country || 'Argentina'}
+                                                onChangeText={(country) => setEditingLead({ ...editingLead, country })}
+                                            />
+                                        </View>
+                                    </View>
+
+                                    {/* Fila 5: Asignación interna y Notas */}
+                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap' }}>
+                                        <View style={{ flex: 1, minWidth: 260, padding: 10, borderRightWidth: 1, borderRightColor: '#334155' }}>
+                                            <Text style={{ color: '#93c5fd', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                👤 Colaborador Asignado
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
+                                                placeholder="email@colaborador.com"
+                                                placeholderTextColor="#64748b"
+                                                value={editingLead.assignedTo || ''}
+                                                onChangeText={(assignedTo) => setEditingLead({ ...editingLead, assignedTo })}
+                                                autoCapitalize="none"
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1.5, minWidth: 300, padding: 10 }}>
+                                            <Text style={{ color: '#cbd5e1', fontSize: 11, fontWeight: 'bold', marginBottom: 4 }}>
+                                                📝 Notas internas (opcional)
+                                            </Text>
+                                            <TextInput
+                                                style={{ backgroundColor: '#1e293b', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 12, height: 38 }}
+                                                placeholder="Observaciones, horarios de contacto, rubro..."
+                                                placeholderTextColor="#64748b"
+                                                value={editingLead.notes || ''}
+                                                onChangeText={(notes) => setEditingLead({ ...editingLead, notes })}
+                                            />
+                                        </View>
                                     </View>
                                 </View>
 
-                                <View>
-                                    <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>Número de WhatsApp (con cód. país, ej: 54911...):</Text>
-                                    <TextInput
-                                        style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
-                                        value={editingLead.phone}
-                                        onChangeText={(phone) => setEditingLead({ ...editingLead, phone })}
-                                        keyboardType="phone-pad"
-                                    />
-                                </View>
-
-                                <View>
-                                    <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>Colaborador / Responsable Asignado:</Text>
-                                    <TextInput
-                                        style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
-                                        placeholder="ej: colaborador@gmail.com"
-                                        placeholderTextColor="#64748b"
-                                        value={editingLead.assignedTo || ''}
-                                        onChangeText={(assignedTo) => setEditingLead({ ...editingLead, assignedTo })}
-                                        autoCapitalize="none"
-                                    />
-                                </View>
-
-                                <View style={{ flexDirection: 'row', gap: 10 }}>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>Instagram (ej: @negocio):</Text>
-                                        <TextInput
-                                            style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
-                                            placeholder="@instagram"
-                                            placeholderTextColor="#64748b"
-                                            value={editingLead.instagram || ''}
-                                            onChangeText={(instagram) => setEditingLead({ ...editingLead, instagram })}
-                                            autoCapitalize="none"
-                                        />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>Página Web (ej: www.negocio.com):</Text>
-                                        <TextInput
-                                            style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
-                                            placeholder="www.sitio.com"
-                                            placeholderTextColor="#64748b"
-                                            value={editingLead.website || ''}
-                                            onChangeText={(website) => setEditingLead({ ...editingLead, website })}
-                                            autoCapitalize="none"
-                                        />
-                                    </View>
-                                </View>
-
-                                <View style={{ flexDirection: 'row', gap: 10 }}>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>Tarifa Fijada ($):</Text>
-                                        <TextInput
-                                            style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
-                                            value={(editingLead.planPrice || 9000).toString()}
-                                            onChangeText={(p) => setEditingLead({ ...editingLead, planPrice: parseInt(p.replace(/[^0-9]/g, ''), 10) || 0 })}
-                                            keyboardType="numeric"
-                                        />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>Email Dueño (opcional):</Text>
-                                        <TextInput
-                                            style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
-                                            value={editingLead.email || ''}
-                                            onChangeText={(email) => setEditingLead({ ...editingLead, email })}
-                                            autoCapitalize="none"
-                                        />
-                                    </View>
-                                </View>
-
-                                <View style={{ flexDirection: 'row', gap: 10 }}>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>Provincia:</Text>
-                                        <TextInput
-                                            style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
-                                            value={editingLead.province || ''}
-                                            onChangeText={(province) => setEditingLead({ ...editingLead, province })}
-                                        />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>Zona / Localidad:</Text>
-                                        <TextInput
-                                            style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
-                                            value={editingLead.zone || ''}
-                                            onChangeText={(zone) => setEditingLead({ ...editingLead, zone })}
-                                        />
-                                    </View>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>País:</Text>
-                                        <TextInput
-                                            style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
-                                            value={editingLead.country || ''}
-                                            onChangeText={(country) => setEditingLead({ ...editingLead, country })}
-                                        />
-                                    </View>
-                                </View>
-
-                                <View>
-                                    <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>Dirección:</Text>
-                                    <TextInput
-                                        style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 13 }}
-                                        value={editingLead.address || ''}
-                                        onChangeText={(address) => setEditingLead({ ...editingLead, address })}
-                                    />
-                                </View>
-
-                                <View>
-                                    <Text style={{ color: '#94a3b8', fontSize: 11, marginBottom: 3 }}>Notas internas:</Text>
-                                    <TextInput
-                                        style={{ backgroundColor: '#0f172a', color: '#fff', borderRadius: 6, borderWidth: 1, borderColor: '#475569', padding: 8, fontSize: 12, height: 60, textAlignVertical: 'top' }}
-                                        multiline={true}
-                                        value={editingLead.notes || ''}
-                                        onChangeText={(notes) => setEditingLead({ ...editingLead, notes })}
-                                    />
-                                </View>
-
-                                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 10 }}>
+                                {/* Botones del Modal */}
+                                <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, paddingVertical: 8 }}>
                                     <Pressable
-                                        style={{ backgroundColor: '#334155', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 6 }}
+                                        style={{ backgroundColor: '#334155', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 8 }}
                                         onPress={() => setIsEditLeadModalOpen(false)}
                                     >
                                         <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Cancelar</Text>
                                     </Pressable>
                                     <Pressable
-                                        style={{ backgroundColor: '#10b981', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 6 }}
+                                        style={{ backgroundColor: '#10b981', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
                                         onPress={handleSaveEditedLead}
                                     >
-                                        <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Guardar Cambios</Text>
+                                        <FontAwesome name="check" size={13} color="#000" />
+                                        <Text style={{ color: '#000', fontSize: 12, fontWeight: 'bold' }}>
+                                            {editingLead && !prospects.some(p => p.id === editingLead.id) ? 'Guardar Nuevo Prospecto' : 'Guardar Cambios'}
+                                        </Text>
                                     </Pressable>
                                 </View>
-                            </View>
+                            </ScrollView>
                         )}
                     </View>
                 </View>
