@@ -42,7 +42,7 @@ export default function BusinessAuthScreen() {
     // Bloquear acceso al panel de negocio desde la app móvil
     useEffect(() => {
         if (Platform.OS !== 'web') {
-            router.replace('/(store)');
+            router.replace('/(store)' as any);
         }
     }, []);
 

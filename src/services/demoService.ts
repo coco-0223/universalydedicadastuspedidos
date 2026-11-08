@@ -148,7 +148,27 @@ export const applyDemoOnboarding = async (businessId: string, data: any) => {
     if (data.pagos === 'transferencia') paymentMethods = ['Efectivo', 'Transferencia'];
     if (data.pagos === 'todas') paymentMethods = ['Efectivo', 'Transferencia', 'MercadoPago'];
 
-    // 4. Actualizar documento principal de Firebase
+    // 4. Modalidades y Reglas de Envío
+    const allowPickup = Array.isArray(data.modalidades) ? data.modalidades.includes('pickup') : true;
+    const allowDelivery = Array.isArray(data.modalidades) ? data.modalidades.includes('delivery') : (data.envios !== 'no');
+    
+    let standardCost = 0;
+    let freeDeliveryThreshold = 0;
+
+    if (allowDelivery) {
+        if (data.tipoEnvio === 'costo_cliente') {
+            standardCost = Number(data.costoEnvio) || 1500;
+            freeDeliveryThreshold = 0;
+        } else if (data.tipoEnvio === 'umbral') {
+            standardCost = Number(data.costoEnvio) || 1500;
+            freeDeliveryThreshold = Number(data.envioGratisDesde) || 15000;
+        } else if (data.tipoEnvio === 'gratis') {
+            standardCost = 0;
+            freeDeliveryThreshold = 0;
+        }
+    }
+
+    // 5. Actualizar documento principal de Firebase
     const businessRef = doc(db, 'businesses', businessId);
     await setDoc(businessRef, {
         onboardingCompleted: true,
@@ -165,11 +185,11 @@ export const applyDemoOnboarding = async (businessId: string, data: any) => {
             paymentMethods,
             deliveryRules: {
                 methods: {
-                    pickup: true,
-                    delivery: data.envios !== 'no'
+                    pickup: allowPickup,
+                    delivery: allowDelivery
                 },
-                standardCost: data.envios === 'si' ? 1500 : 0,
-                freeDeliveryThreshold: 0
+                standardCost,
+                freeDeliveryThreshold
             }
         }
     }, { merge: true });

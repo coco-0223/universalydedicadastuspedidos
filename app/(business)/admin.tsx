@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../../src/config/firebase';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Modal, ActivityIndicator } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Modal, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useAppContext } from '../../src/context/AppContext';
 import { Order, OrderStatus } from '../../src/types';
 import { saveOrderToFirebase, createBroadcast, deleteOrderFromFirebase } from '../../src/services/businessService';
@@ -637,6 +637,9 @@ TOTAL: $${order.totalPrice.toFixed(2)}${orderPricing.hasCashDiscount ? `\nTOTAL 
 
 export default function BusinessDashboardScreen() {
     const { orders, setOrders, businessProfile, settings, isLoadingOrders, isSyncingFuture, isSyncingPast, syncFutureOrders, syncPastOrders, loadBusinessById } = useAppContext();
+    const { width } = useWindowDimensions();
+    const isMobile = width < 768;
+    const [mobileExpandedSection, setMobileExpandedSection] = useState<'deliveries' | 'pickups' | null>('deliveries');
     const [viewMode, setViewMode] = useState<'kanban' | 'trends' | 'chatbot'>('kanban');
     const [timeFilter, setTimeFilter] = useState<'all' | 'archived_pending' | 'archived_completed' | 'archived_and_deleted' | 'ready_today' | number>('all');
     const [showOnboarding, setShowOnboarding] = useState(false);
@@ -648,7 +651,10 @@ export default function BusinessDashboardScreen() {
         address: string;
         primaryColor: string;
         pagos: string;
-        envios: string;
+        modalidades: ('pickup' | 'delivery')[];
+        tipoEnvio: 'gratis' | 'umbral' | 'costo_cliente';
+        envioGratisDesde: string;
+        costoEnvio: string;
     }>({
         businessName: '',
         rubro: 'carniceria',
@@ -656,7 +662,10 @@ export default function BusinessDashboardScreen() {
         address: '',
         primaryColor: '#0f172a',
         pagos: 'efectivo',
-        envios: 'no'
+        modalidades: ['pickup', 'delivery'],
+        tipoEnvio: 'costo_cliente',
+        envioGratisDesde: '15000',
+        costoEnvio: '1500'
     });
     const [isOnboardingSubmitting, setIsOnboardingSubmitting] = useState(false);
 
@@ -963,15 +972,15 @@ export default function BusinessDashboardScreen() {
     return (
         <View style={styles.container}>
             {businessProfile?.status === 'trial' && (
-                <View style={{ backgroundColor: '#fffbeb', borderBottomWidth: 1, borderBottomColor: '#fde68a', paddingVertical: 10, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 260 }}>
+                <View style={{ backgroundColor: '#fffbeb', borderBottomWidth: 1, borderBottomColor: '#fde68a', paddingVertical: 10, paddingHorizontal: isMobile ? 14 : 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: isMobile ? '100%' : 260 }}>
                         <FontAwesome name="lock" size={16} color="#d97706" />
-                        <Text style={{ color: '#92400e', fontSize: 13 }}>
-                            <Text style={{ fontWeight: 'bold' }}>Tarifa congelada a ${(businessProfile.planPrice || 9000).toLocaleString()}/mes</Text> durante tus 7 días de prueba. ¡Asegurá tu cupo antes de que venza!
+                        <Text style={{ color: '#92400e', fontSize: 13, flex: 1 }}>
+                            <Text style={{ fontWeight: 'bold' }}>Tarifa congelada a ${(businessProfile.planPrice || 9000).toLocaleString()}/mes</Text> durante tus 7 días de prueba.
                         </Text>
                     </View>
                     <Pressable 
-                        style={{ backgroundColor: '#10b981', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                        style={{ backgroundColor: '#10b981', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: isMobile ? 'flex-start' : 'center' }}
                         onPress={() => {
                             const wspMsg = encodeURIComponent(`Hola! Quiero asegurar mi tarifa congelada de $${(businessProfile.planPrice || 9000).toLocaleString()}/mes para mi negocio ${businessProfile.name || ''} (ID: ${businessProfile.id}).`);
                             if (Platform.OS === 'web' && typeof window !== 'undefined') {
@@ -984,14 +993,14 @@ export default function BusinessDashboardScreen() {
                     </Pressable>
                 </View>
             )}
-            <View style={styles.headerArea}>
+            <View style={[styles.headerArea, isMobile && { flexDirection: 'column', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: 18, paddingBottom: 10, gap: 10 }]}>
                 <View>
                     <Text style={styles.title}>Panel de Preparación</Text>
                     <Text style={styles.subtitle}>
                         <Text style={{fontWeight: 'bold', color: '#111'}}>{displayOrders.length}</Text> pedidos ({pickups.length} Retiro / {deliveries.length} Envío)
                     </Text>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
+                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                     <Pressable 
                         style={[styles.trendsBtn, { backgroundColor: '#ea580c' }]} 
                         onPress={() => setShowCreateOrderModal(true)}
@@ -1013,7 +1022,7 @@ export default function BusinessDashboardScreen() {
                 </View>
             </View>
 
-            <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: 20, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', gap: 10, paddingHorizontal: isMobile ? 16 : 20, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <Pressable 
                     style={({ pressed }) => [
                         { 
@@ -1056,7 +1065,7 @@ export default function BusinessDashboardScreen() {
                 )}
             </View>
 
-            <View style={styles.nextUpRow}>
+            <View style={[styles.nextUpRow, isMobile && { paddingHorizontal: 16, gap: 8, marginBottom: 12 }]}>
                 <Pressable style={[styles.nextBox, { backgroundColor: '#fff7ed', borderColor: '#fdba74' }]} onPress={() => { const nx = getNextTimeStr(pickups); if(nx.id) setFocusedOrderId(nx.id); }}>
                     <Text style={[styles.nextBoxTitle, { color: '#c2410c' }]}>🏪 Próximo Retiro</Text>
                     <Text style={styles.nextBoxValue}>{getNextTimeStr(pickups).text}</Text>
@@ -1067,55 +1076,168 @@ export default function BusinessDashboardScreen() {
                 </Pressable>
             </View>
 
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterScrollContent}>
-                <Pressable style={[styles.filterBtn, timeFilter === 'all' && styles.filterBtnActive]} onPress={() => setTimeFilter('all')}>
-                    <Text style={[styles.filterBtnText, timeFilter === 'all' && styles.filterBtnTextActive]}>Todos</Text>
-                </Pressable>
-                <Pressable style={[styles.filterBtn, timeFilter === 'ready_today' && styles.filterBtnActive]} onPress={() => setTimeFilter('ready_today')}>
-                    <Text style={[styles.filterBtnText, timeFilter === 'ready_today' && styles.filterBtnTextActive]}>🟢 Listos</Text>
-                </Pressable>
-                <Pressable style={[styles.filterBtn, timeFilter === 'archived_pending' && styles.filterBtnActive]} onPress={() => setTimeFilter('archived_pending')}>
-                    {pendingArchivedCount > 0 && <View style={styles.archivedBadge}><Text style={styles.archivedBadgeText}>{pendingArchivedCount}</Text></View>}
-                    <Text style={[styles.filterBtnText, timeFilter === 'archived_pending' && styles.filterBtnTextActive]}>⚠️ Atrasados</Text>
-                </Pressable>
-                <Pressable style={[styles.filterBtn, timeFilter === 'archived_and_deleted' && styles.filterBtnActive]} onPress={() => setTimeFilter('archived_and_deleted')}>
-                    <Text style={[styles.filterBtnText, timeFilter === 'archived_and_deleted' && styles.filterBtnTextActive]}>📦 Archivados y Eliminados</Text>
-                </Pressable>
-                {[0, 1, 2, 3, 4, 5, 6].map(offset => {
-                    const d = new Date(startOfToday);
-                    d.setDate(d.getDate() + offset);
-                    const diaStr = d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
-                    const dayList = myOrders.filter(o => getDayOffset(o.scheduledTime) === offset);
-                    const p = dayList.filter(o => o.deliveryMethod === 'pickup').length;
-                    const e = dayList.filter(o => o.deliveryMethod === 'delivery').length;
-                    const countStr = `(${e}/${p})`;
-                    let label = offset === 0 ? `Hoy ${countStr}` : (offset === 1 ? `Mañana ${countStr}` : `${diaStr} ${countStr}`);
-                    return (
-                        <Pressable key={offset} style={[styles.filterBtn, timeFilter === offset && styles.filterBtnActive]} onPress={() => setTimeFilter(offset)}>
-                            <Text style={[styles.filterBtnText, timeFilter === offset && styles.filterBtnTextActive]}>{label}</Text>
+            {/* Componente Reutilizable de Filtros de Fecha y Estado */}
+            {(() => {
+                const renderFilterControls = () => (
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll} contentContainerStyle={styles.filterScrollContent}>
+                        <Pressable style={[styles.filterBtn, timeFilter === 'all' && styles.filterBtnActive]} onPress={() => setTimeFilter('all')}>
+                            <Text style={[styles.filterBtnText, timeFilter === 'all' && styles.filterBtnTextActive]}>Todos</Text>
                         </Pressable>
-                    );
-                })}
-            </ScrollView>
+                        <Pressable style={[styles.filterBtn, timeFilter === 'ready_today' && styles.filterBtnActive]} onPress={() => setTimeFilter('ready_today')}>
+                            <Text style={[styles.filterBtnText, timeFilter === 'ready_today' && styles.filterBtnTextActive]}>🟢 Listos</Text>
+                        </Pressable>
+                        <Pressable style={[styles.filterBtn, timeFilter === 'archived_pending' && styles.filterBtnActive]} onPress={() => setTimeFilter('archived_pending')}>
+                            {pendingArchivedCount > 0 && <View style={styles.archivedBadge}><Text style={styles.archivedBadgeText}>{pendingArchivedCount}</Text></View>}
+                            <Text style={[styles.filterBtnText, timeFilter === 'archived_pending' && styles.filterBtnTextActive]}>⚠️ Atrasados</Text>
+                        </Pressable>
+                        <Pressable style={[styles.filterBtn, timeFilter === 'archived_and_deleted' && styles.filterBtnActive]} onPress={() => setTimeFilter('archived_and_deleted')}>
+                            <Text style={[styles.filterBtnText, timeFilter === 'archived_and_deleted' && styles.filterBtnTextActive]}>📦 Archivados y Eliminados</Text>
+                        </Pressable>
+                        {[0, 1, 2, 3, 4, 5, 6].map(offset => {
+                            const d = new Date(startOfToday);
+                            d.setDate(d.getDate() + offset);
+                            const diaStr = d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' });
+                            const dayList = myOrders.filter(o => getDayOffset(o.scheduledTime) === offset);
+                            const p = dayList.filter(o => o.deliveryMethod === 'pickup').length;
+                            const e = dayList.filter(o => o.deliveryMethod === 'delivery').length;
+                            const countStr = `(${e}/${p})`;
+                            let label = offset === 0 ? `Hoy ${countStr}` : (offset === 1 ? `Mañana ${countStr}` : `${diaStr} ${countStr}`);
+                            return (
+                                <Pressable key={offset} style={[styles.filterBtn, timeFilter === offset && styles.filterBtnActive]} onPress={() => setTimeFilter(offset)}>
+                                    <Text style={[styles.filterBtnText, timeFilter === offset && styles.filterBtnTextActive]}>{label}</Text>
+                                </Pressable>
+                            );
+                        })}
+                    </ScrollView>
+                );
 
-            <View style={styles.kanbanContainer}>
-                <View style={styles.kanbanColumn}>
-                    <View style={[styles.colHeader, { backgroundColor: timeFilter === 'archived_and_deleted' ? '#4b5563' : '#ea580c' }]}>
-                        <Text style={styles.colTitle}>
-                            {timeFilter === 'archived_and_deleted' ? '📦 Archivados' : '🏪 Retiros'}
-                        </Text>
-                    </View>
-                    <FlatList data={pickups} keyExtractor={item => item.id} renderItem={({ item }) => <OrderCard order={item} onClientClick={setSelectedClientName} onEditClick={(ord) => setEditingOrder(ord)} />} ListEmptyComponent={renderEmptyList} contentContainerStyle={styles.list} />
-                </View>
-                <View style={styles.kanbanColumn}>
-                    <View style={[styles.colHeader, { backgroundColor: timeFilter === 'archived_and_deleted' ? '#ef4444' : '#0284c7' }]}>
-                        <Text style={styles.colTitle}>
-                            {timeFilter === 'archived_and_deleted' ? '🗑️ Eliminados' : '🚚 Envíos'}
-                        </Text>
-                    </View>
-                    <FlatList data={deliveries} keyExtractor={item => item.id} renderItem={({ item }) => <OrderCard order={item} onClientClick={setSelectedClientName} onEditClick={(ord) => setEditingOrder(ord)} />} ListEmptyComponent={renderEmptyList} contentContainerStyle={styles.list} />
-                </View>
-            </View>
+                if (isMobile) {
+                    return (
+                        <ScrollView style={{ flex: 1, paddingHorizontal: 14, width: '100%' }} showsVerticalScrollIndicator={false}>
+                            {/* BLOQUE 1: ENVÍOS (Arriba) */}
+                            <View style={{ marginBottom: 14, backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 }}>
+                                <Pressable
+                                    onPress={() => setMobileExpandedSection(prev => prev === 'deliveries' ? null : 'deliveries')}
+                                    style={{
+                                        backgroundColor: timeFilter === 'archived_and_deleted' ? '#ef4444' : '#0284c7',
+                                        paddingHorizontal: 16,
+                                        paddingVertical: 14,
+                                        flexDirection: 'row',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center'
+                                    }}
+                                >
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                        <FontAwesome name="truck" size={18} color="#fff" />
+                                        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>
+                                            {timeFilter === 'archived_and_deleted' ? '🗑️ Eliminados' : '🚚 Envíos a Domicilio'}
+                                        </Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                        <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                                            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>{deliveries.length}</Text>
+                                        </View>
+                                        <FontAwesome name={mobileExpandedSection === 'deliveries' ? 'chevron-up' : 'chevron-down'} size={14} color="#fff" />
+                                    </View>
+                                </Pressable>
+
+                                {mobileExpandedSection === 'deliveries' && (
+                                    <View style={{ padding: 10, backgroundColor: '#f8fafc' }}>
+                                        {deliveries.length === 0 ? (
+                                            renderEmptyList()
+                                        ) : (
+                                            deliveries.map(item => (
+                                                <OrderCard key={item.id} order={item} onClientClick={setSelectedClientName} onEditClick={ord => setEditingOrder(ord)} />
+                                            ))
+                                        )}
+
+                                        {/* Botones de fechas y estados debajo del panel abierto */}
+                                        <View style={{ marginTop: 14, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#e2e8f0' }}>
+                                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748b', marginBottom: 8, textTransform: 'uppercase' }}>
+                                                📅 Cambiar fecha o estado:
+                                            </Text>
+                                            {renderFilterControls()}
+                                        </View>
+                                    </View>
+                                )}
+                            </View>
+
+                            {/* BLOQUE 2: RETIROS (Abajo) */}
+                            <View style={{ marginBottom: 24, backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: '#e2e8f0', shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 2 }}>
+                                <Pressable
+                                    onPress={() => setMobileExpandedSection(prev => prev === 'pickups' ? null : 'pickups')}
+                                    style={{
+                                        backgroundColor: timeFilter === 'archived_and_deleted' ? '#4b5563' : '#ea580c',
+                                        paddingHorizontal: 16,
+                                        paddingVertical: 14,
+                                        flexDirection: 'row',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center'
+                                    }}
+                                >
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                        <FontAwesome name="home" size={18} color="#fff" />
+                                        <Text style={{ color: '#fff', fontWeight: '800', fontSize: 16 }}>
+                                            {timeFilter === 'archived_and_deleted' ? '📦 Archivados' : '🏪 Retiros por Sucursal'}
+                                        </Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                        <View style={{ backgroundColor: 'rgba(255, 255, 255, 0.25)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 }}>
+                                            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>{pickups.length}</Text>
+                                        </View>
+                                        <FontAwesome name={mobileExpandedSection === 'pickups' ? 'chevron-up' : 'chevron-down'} size={14} color="#fff" />
+                                    </View>
+                                </Pressable>
+
+                                {mobileExpandedSection === 'pickups' && (
+                                    <View style={{ padding: 10, backgroundColor: '#f8fafc' }}>
+                                        {pickups.length === 0 ? (
+                                            renderEmptyList()
+                                        ) : (
+                                            pickups.map(item => (
+                                                <OrderCard key={item.id} order={item} onClientClick={setSelectedClientName} onEditClick={ord => setEditingOrder(ord)} />
+                                            ))
+                                        )}
+
+                                        {/* Botones de fechas y estados debajo del panel abierto */}
+                                        <View style={{ marginTop: 14, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#e2e8f0' }}>
+                                            <Text style={{ fontSize: 11, fontWeight: '700', color: '#64748b', marginBottom: 8, textTransform: 'uppercase' }}>
+                                                📅 Cambiar fecha o estado:
+                                            </Text>
+                                            {renderFilterControls()}
+                                        </View>
+                                    </View>
+                                )}
+                            </View>
+                        </ScrollView>
+                    );
+                }
+
+                // Desktop Layout
+                return (
+                    <>
+                        {renderFilterControls()}
+                        <View style={styles.kanbanContainer}>
+                            <View style={styles.kanbanColumn}>
+                                <View style={[styles.colHeader, { backgroundColor: timeFilter === 'archived_and_deleted' ? '#4b5563' : '#ea580c' }]}>
+                                    <Text style={styles.colTitle}>
+                                        {timeFilter === 'archived_and_deleted' ? '📦 Archivados' : '🏪 Retiros'}
+                                    </Text>
+                                </View>
+                                <FlatList data={pickups} keyExtractor={item => item.id} renderItem={({ item }) => <OrderCard order={item} onClientClick={setSelectedClientName} onEditClick={(ord) => setEditingOrder(ord)} />} ListEmptyComponent={renderEmptyList} contentContainerStyle={styles.list} />
+                            </View>
+                            <View style={styles.kanbanColumn}>
+                                <View style={[styles.colHeader, { backgroundColor: timeFilter === 'archived_and_deleted' ? '#ef4444' : '#0284c7' }]}>
+                                    <Text style={styles.colTitle}>
+                                        {timeFilter === 'archived_and_deleted' ? '🗑️ Eliminados' : '🚚 Envíos'}
+                                    </Text>
+                                </View>
+                                <FlatList data={deliveries} keyExtractor={item => item.id} renderItem={({ item }) => <OrderCard order={item} onClientClick={setSelectedClientName} onEditClick={(ord) => setEditingOrder(ord)} />} ListEmptyComponent={renderEmptyList} contentContainerStyle={styles.list} />
+                            </View>
+                        </View>
+                    </>
+                );
+            })()}
 
             {focusedOrderId && (
                 <View style={styles.modalOverlay}>
@@ -1282,10 +1404,10 @@ export default function BusinessDashboardScreen() {
 
             {/* Onboarding Modal Multi-Paso */}
             <Modal visible={showOnboarding} animationType="fade" transparent>
-                <View style={{ flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.75)', justifyContent: 'center', alignItems: 'center', padding: 16 }}>
-                    <View style={{ backgroundColor: '#fff', borderRadius: 20, width: '100%', maxWidth: 540, maxHeight: '92%', overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 10 }}>
+                <View style={{ flex: 1, backgroundColor: 'rgba(15, 23, 42, 0.75)', justifyContent: 'center', alignItems: 'center', padding: isMobile ? 8 : 16, width: '100%' }}>
+                    <View style={{ backgroundColor: '#fff', borderRadius: 20, width: '100%', maxWidth: 540, maxHeight: '92%', overflow: 'hidden', alignSelf: 'center', shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.25, shadowRadius: 20, elevation: 10 }}>
                         {/* Header de Progreso */}
-                        <View style={{ backgroundColor: '#f8fafc', paddingHorizontal: 24, paddingVertical: 18, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
+                        <View style={{ backgroundColor: '#f8fafc', paddingHorizontal: isMobile ? 16 : 24, paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' }}>
                             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                                 <Text style={{ fontSize: 13, fontWeight: '700', color: '#64748b', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                                     Configuración Inicial • Paso {onboardingStep} de 5
@@ -1299,7 +1421,7 @@ export default function BusinessDashboardScreen() {
                             </View>
                         </View>
 
-                        <ScrollView contentContainerStyle={{ padding: 24 }} showsVerticalScrollIndicator={false}>
+                        <ScrollView contentContainerStyle={{ padding: isMobile ? 16 : 24 }} showsVerticalScrollIndicator={false}>
                             {/* PASO 1: Nombre y Rubro */}
                             {onboardingStep === 1 && (
                                 <View>
@@ -1503,39 +1625,162 @@ export default function BusinessDashboardScreen() {
                             {onboardingStep === 5 && (
                                 <View>
                                     <Text style={{ fontSize: 22, fontWeight: '800', color: '#0f172a', marginBottom: 6 }}>
-                                        🛵 Envíos y Medios de Pago
+                                        🛵 Modalidad de Entrega y Pagos
                                     </Text>
-                                    <Text style={{ fontSize: 14, color: '#64748b', marginBottom: 20 }}>
-                                        Definí cómo recibirás el dinero y cómo entregarás los pedidos.
+                                    <Text style={{ fontSize: 14, color: '#64748b', marginBottom: 18 }}>
+                                        Configurá cómo van a recibir los pedidos tus clientes.
                                     </Text>
 
-                                    <Text style={{ fontWeight: '700', color: '#334155', marginBottom: 8, fontSize: 13 }}>¿Realizás envíos a domicilio?</Text>
-                                    <View style={{ gap: 8, marginBottom: 20 }}>
-                                        {[
-                                            { id: 'no', label: 'No, solo retiran en local 🏪' },
-                                            { id: 'si', label: 'Sí, cobro costo de envío 🛵' },
-                                            { id: 'gratis', label: 'Sí, envío gratis 🎉' }
-                                        ].map(item => {
-                                            const active = onboardingData.envios === item.id;
+                                    <Text style={{ fontWeight: '700', color: '#1e293b', marginBottom: 8, fontSize: 14 }}>
+                                        ¿Qué modalidad pensás utilizar? Seleccioná 1 o más:
+                                    </Text>
+
+                                    <View style={{ gap: 10, marginBottom: 20 }}>
+                                        {/* Opción 1: Retiro por sucursal */}
+                                        {(() => {
+                                            const isSelected = (onboardingData.modalidades || []).includes('pickup');
                                             return (
                                                 <Pressable
-                                                    key={item.id}
-                                                    onPress={() => setOnboardingData({ ...onboardingData, envios: item.id })}
+                                                    onPress={() => {
+                                                        const current = onboardingData.modalidades || [];
+                                                        if (isSelected && current.length === 1) return; // al menos 1
+                                                        setOnboardingData({
+                                                            ...onboardingData,
+                                                            modalidades: isSelected ? current.filter(m => m !== 'pickup') : [...current, 'pickup']
+                                                        });
+                                                    }}
                                                     style={{
-                                                        padding: 12,
-                                                        borderRadius: 10,
+                                                        padding: 14,
+                                                        borderRadius: 12,
                                                         borderWidth: 2,
-                                                        borderColor: active ? '#0284c7' : '#e2e8f0',
-                                                        backgroundColor: active ? '#f0f9ff' : '#fff'
+                                                        borderColor: isSelected ? '#0284c7' : '#e2e8f0',
+                                                        backgroundColor: isSelected ? '#f0f9ff' : '#fff',
+                                                        flexDirection: 'row',
+                                                        alignItems: 'center',
+                                                        justifyContent: 'space-between'
                                                     }}
                                                 >
-                                                    <Text style={{ fontWeight: active ? '700' : '500', color: active ? '#0369a1' : '#475569', fontSize: 14 }}>{item.label}</Text>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                                        <Text style={{ fontSize: 20 }}>🏪</Text>
+                                                        <Text style={{ fontWeight: isSelected ? '700' : '600', color: isSelected ? '#0369a1' : '#334155', fontSize: 15 }}>
+                                                            Retiro por sucursal
+                                                        </Text>
+                                                    </View>
+                                                    <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: isSelected ? '#0284c7' : '#cbd5e1', backgroundColor: isSelected ? '#0284c7' : '#fff', justifyContent: 'center', alignItems: 'center' }}>
+                                                        {isSelected && <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
+                                                    </View>
                                                 </Pressable>
                                             );
-                                        })}
+                                        })()}
+
+                                        {/* Opción 2: Envíos */}
+                                        {(() => {
+                                            const isSelected = (onboardingData.modalidades || []).includes('delivery');
+                                            return (
+                                                <View>
+                                                    <Pressable
+                                                        onPress={() => {
+                                                            const current = onboardingData.modalidades || [];
+                                                            if (isSelected && current.length === 1) return; // al menos 1
+                                                            setOnboardingData({
+                                                                ...onboardingData,
+                                                                modalidades: isSelected ? current.filter(m => m !== 'delivery') : [...current, 'delivery']
+                                                            });
+                                                        }}
+                                                        style={{
+                                                            padding: 14,
+                                                            borderRadius: 12,
+                                                            borderWidth: 2,
+                                                            borderColor: isSelected ? '#0284c7' : '#e2e8f0',
+                                                            backgroundColor: isSelected ? '#f0f9ff' : '#fff',
+                                                            flexDirection: 'row',
+                                                            alignItems: 'center',
+                                                            justifyContent: 'space-between'
+                                                        }}
+                                                    >
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                                                            <Text style={{ fontSize: 20 }}>🛵</Text>
+                                                            <Text style={{ fontWeight: isSelected ? '700' : '600', color: isSelected ? '#0369a1' : '#334155', fontSize: 15 }}>
+                                                                Envíos a domicilio
+                                                            </Text>
+                                                        </View>
+                                                        <View style={{ width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: isSelected ? '#0284c7' : '#cbd5e1', backgroundColor: isSelected ? '#0284c7' : '#fff', justifyContent: 'center', alignItems: 'center' }}>
+                                                            {isSelected && <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>✓</Text>}
+                                                        </View>
+                                                    </Pressable>
+
+                                                    {/* Desplegable de Envíos */}
+                                                    {isSelected && (
+                                                        <View style={{ marginTop: 8, padding: 12, backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', gap: 8 }}>
+                                                            <Text style={{ fontSize: 12, fontWeight: '700', color: '#64748b', marginBottom: 2 }}>
+                                                                Elegí cómo cobrar los envíos:
+                                                            </Text>
+                                                            {[
+                                                                { id: 'gratis', label: 'Envíos gratis 🎉' },
+                                                                { id: 'umbral', label: 'Envíos gratis a partir de $X 🎯' },
+                                                                { id: 'costo_cliente', label: 'Envíos a costo del cliente 🛵' },
+                                                            ].map(opt => {
+                                                                const active = (onboardingData.tipoEnvio || 'costo_cliente') === opt.id;
+                                                                return (
+                                                                    <Pressable
+                                                                        key={opt.id}
+                                                                        onPress={() => setOnboardingData({ ...onboardingData, tipoEnvio: opt.id as any })}
+                                                                        style={{
+                                                                            padding: 10,
+                                                                            borderRadius: 8,
+                                                                            borderWidth: 1.5,
+                                                                            borderColor: active ? '#0284c7' : '#cbd5e1',
+                                                                            backgroundColor: active ? '#f0f9ff' : '#fff',
+                                                                            flexDirection: 'row',
+                                                                            alignItems: 'center',
+                                                                            justifyContent: 'space-between'
+                                                                        }}
+                                                                    >
+                                                                        <Text style={{ fontSize: 13, fontWeight: active ? '700' : '500', color: active ? '#0369a1' : '#334155' }}>
+                                                                            {opt.label}
+                                                                        </Text>
+                                                                        <View style={{ width: 16, height: 16, borderRadius: 8, borderWidth: 2, borderColor: active ? '#0284c7' : '#cbd5e1', justifyContent: 'center', alignItems: 'center' }}>
+                                                                            {active && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#0284c7' }} />}
+                                                                        </View>
+                                                                    </Pressable>
+                                                                );
+                                                            })}
+
+                                                            {onboardingData.tipoEnvio === 'umbral' && (
+                                                                <View style={{ marginTop: 6 }}>
+                                                                    <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>¿A partir de qué monto el envío es gratis?</Text>
+                                                                    <TextInput
+                                                                        style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 10, fontSize: 14 }}
+                                                                        keyboardType="numeric"
+                                                                        placeholder="Ej: 15000"
+                                                                        value={onboardingData.envioGratisDesde}
+                                                                        onChangeText={t => setOnboardingData({ ...onboardingData, envioGratisDesde: t })}
+                                                                    />
+                                                                </View>
+                                                            )}
+
+                                                            {(onboardingData.tipoEnvio === 'costo_cliente' || onboardingData.tipoEnvio === 'umbral') && (
+                                                                <View style={{ marginTop: 6 }}>
+                                                                    <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 4 }}>Costo base de envío:</Text>
+                                                                    <TextInput
+                                                                        style={{ backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 8, padding: 10, fontSize: 14 }}
+                                                                        keyboardType="numeric"
+                                                                        placeholder="Ej: 1500"
+                                                                        value={onboardingData.costoEnvio}
+                                                                        onChangeText={t => setOnboardingData({ ...onboardingData, costoEnvio: t })}
+                                                                    />
+                                                                </View>
+                                                            )}
+                                                        </View>
+                                                    )}
+                                                </View>
+                                            );
+                                        })()}
                                     </View>
 
-                                    <Text style={{ fontWeight: '700', color: '#334155', marginBottom: 8, fontSize: 13 }}>¿Qué medios de pago aceptás?</Text>
+                                    <Text style={{ fontWeight: '700', color: '#1e293b', marginBottom: 8, fontSize: 14 }}>
+                                        ¿Qué medios de pago aceptás?
+                                    </Text>
                                     <View style={{ gap: 8, marginBottom: 10 }}>
                                         {[
                                             { id: 'efectivo', label: 'Solo Efectivo 💵' },
