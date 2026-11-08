@@ -57,13 +57,15 @@ export default function IniciarDemoScreen() {
     // Precarga automática desde los parámetros del link de WhatsApp (b=usuario, name=Nombre) o de la URL directa en web
     const [businessName, setBusinessName] = useState(() => getQueryParam('name') || getQueryParam('n') || '');
     const [username, setUsername] = useState(() => getQueryParam('b') || getQueryParam('u') || '');
-    const [isDirectInvite, setIsDirectInvite] = useState(() => Boolean(getQueryParam('b') || getQueryParam('u') || getQueryParam('name') || getQueryParam('n')));
+    const [isDirectInvite, setIsDirectInvite] = useState(() => Boolean(getQueryParam('b') || getQueryParam('u') || getQueryParam('name') || getQueryParam('n') || getQueryParam('lead')));
     const [ownerPhone, setOwnerPhone] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [leadRecord, setLeadRecord] = useState<any>(null);
     
-    // Si los params llegan luego de la hidratación inicial de Expo Router en Web
+    // Si los params llegan luego de la hidratación inicial de Expo Router en Web o si viene 'lead' para leer desde Firestore
     useEffect(() => {
+        const leadId = getQueryParam('lead') || getQueryParam('b');
         const nameFromUrl = getQueryParam('name') || getQueryParam('n');
         const userFromUrl = getQueryParam('b') || getQueryParam('u');
         const codeFromUrl = (getQueryParam('c') || getQueryParam('promo') || getQueryParam('plan')).toLowerCase();
@@ -74,7 +76,7 @@ export default function IniciarDemoScreen() {
         if (userFromUrl) {
             setUsername(userFromUrl);
         }
-        if (nameFromUrl || userFromUrl) {
+        if (nameFromUrl || userFromUrl || leadId) {
             setIsDirectInvite(true);
         }
         if (codeFromUrl) {
@@ -90,6 +92,35 @@ export default function IniciarDemoScreen() {
                     }
                 }
             }
+        }
+
+        // Consultar los datos completos del prospecto en Firestore (SuperAdmin)
+        if (leadId) {
+            const db = getFirestore(app);
+            getDoc(doc(db, 'prospect_leads', leadId)).then((snap) => {
+                if (snap.exists()) {
+                    const data = snap.data();
+                    setLeadRecord(data);
+                    if (data.businessName || data.name) {
+                        setBusinessName(data.businessName || data.name);
+                    }
+                    if (data.id) {
+                        setUsername(data.id);
+                    }
+                    if (data.phone) {
+                        setOwnerPhone(data.phone);
+                    }
+                    if (data.email) {
+                        setEmail(data.email);
+                    }
+                    if (data.planPrice) {
+                        setPlanPrice(data.planPrice);
+                    }
+                    setIsDirectInvite(true);
+                }
+            }).catch((err) => {
+                console.warn('Error fetching lead data from superadmin:', err);
+            });
         }
     }, [params]);
     
@@ -246,7 +277,7 @@ export default function IniciarDemoScreen() {
                 trialExpiresAt: expiresAt.toISOString(),
                 planPrice: planPrice,
                 promoTag: isProPlan ? 'pro' : 'founder',
-                contactPhone: ownerPhone.trim() || undefined,
+                contactPhone: ownerPhone.trim() || leadRecord?.phone || undefined,
                 ownerEmail: finalAuthEmail,
                 onboardingCompleted: false
             };

@@ -233,7 +233,7 @@ export const renderWhatsAppMessage = (
         origin = defaultPublicUrl;
     }
 
-    const link = `${origin}/iniciar-demo?b=${encodeURIComponent(params.slug)}&name=${encodeURIComponent(params.businessName)}&c=${encodeURIComponent(params.code)}`;
+    const link = `${origin}/iniciar-demo?lead=${encodeURIComponent(params.slug)}&b=${encodeURIComponent(params.slug)}&name=${encodeURIComponent(params.businessName)}&c=${encodeURIComponent(params.code)}`;
     
     const salutationName = params.contactName || params.businessName || 'tu negocio';
 
