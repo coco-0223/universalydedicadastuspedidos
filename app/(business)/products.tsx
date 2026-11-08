@@ -3,7 +3,7 @@ import { IS_DEDICATED_APP } from '../../src/data/mockData';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { ImagePickerPortal } from '../../src/components/ImagePickerPortal';
 import { ExcelImportModal } from '../../src/components/ExcelImportModal';
 import { SuperadminRawExcelEditor } from '../../src/components/SuperadminRawExcelEditor';
@@ -14,6 +14,10 @@ import { CrossSellRule, MixAndMatchRule, Offer, Product } from '../../src/types'
 
 export default function BusinessProductsScreen() {
     const { products, setProducts, settings, setSettings, offers, setOffers, businessProfile, user } = useAppContext();
+    const { width } = useWindowDimensions();
+    const isMobile = width < 768;
+    const [showExtraActions, setShowExtraActions] = useState(false);
+
     const myProducts = useMemo(() => products.filter(p => !p.businessId || p.businessId === businessProfile.id), [products, businessProfile.id]);
     const myOffers = useMemo(() => offers.filter(o => !o.businessId || o.businessId === businessProfile.id), [offers, businessProfile.id]);
     const [drafts, setDrafts] = useState<Partial<Product>[]>([{ id: Date.now().toString(), name: '', category: settings.categories?.[0] || 'Varios', price: 0, imageUrl: '', available: true, description: '' }]);
@@ -1540,74 +1544,162 @@ export default function BusinessProductsScreen() {
     return (
         <View style={{ flex: 1 }}>
             <ScrollView style={styles.container}>
-                <View style={styles.content}>
+                <View style={[styles.content, isMobile && { padding: 12, paddingBottom: 100 }]}>
                     <Text style={styles.pageTitle}>Panel de Control: Inventario Web</Text>
                     <Text style={styles.subtitle}>Añade y edita múltiples productos en simultáneo.</Text>
 
-                    <View style={styles.section}>
-                        <View style={styles.sectionHeader}>
-                            <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
-                            <Pressable style={[styles.addBtn, { backgroundColor: '#007AFF', marginRight: 10 }]} onPress={() => setIsDraftsModalOpen(true)}>
-                                <Text style={styles.btnText}>+ Añadir Nuevo Producto</Text>
-                            </Pressable>
-                            <Pressable style={[styles.addBtn, { backgroundColor: '#eab308', marginRight: 10 }]} onPress={openSpecialsPricing}>
-                                <Text style={styles.btnText}>⚡ Especiales</Text>
-                            </Pressable>
-                            <Pressable style={[styles.addBtn, { backgroundColor: '#d97706', marginRight: 10 }]} onPress={openDailyOffers}>
-                                <Text style={styles.btnText}>🔥 Ofertas del Día</Text>
-                            </Pressable>
-                            
-                            {!IS_DEDICATED_APP && (
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#10b981', marginRight: 10 }]} onPress={exportPriceListToExcel}>
-                                    <Text style={styles.btnText}>⬇️ Exportar Plantilla Excel</Text>
-                                </Pressable>
-                            )}
-                            <Pressable style={[styles.addBtn, { backgroundColor: '#dc2626', marginRight: 10 }]} onPress={() => setIsSmartExcelModalOpen(true)}>
+                    <View style={[styles.section, isMobile && { padding: 14 }]}>
+                        {isMobile ? (
+                            <View style={{ gap: 10 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <Text style={[styles.sectionTitle, { fontSize: 18, marginRight: 0 }]}>Acciones Rápidas</Text>
+                                    <Pressable 
+                                        style={{ backgroundColor: '#f3f4f6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }} 
+                                        onPress={() => setIsHelpOpen(true)}
+                                    >
+                                        <Text style={{ fontSize: 12, color: '#4b5563', fontWeight: 'bold' }}>❔ Ayuda</Text>
+                                    </Pressable>
+                                </View>
 
-                                <Text style={styles.btnText}>📥 Subir Excel Inteligente</Text>
-                            </Pressable>
-                            {user?.email === 'cocobustos.93@gmail.com' && settings.rawExcelGrid && (
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#3b82f6', marginRight: 10 }]} onPress={() => setIsSuperadminRawExcelOpen(true)}>
-                                    <Text style={styles.btnText}>Ver Excel Original</Text>
+                                {/* Botón principal destacado */}
+                                <Pressable 
+                                    style={[styles.addBtn, { backgroundColor: '#007AFF', paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }]} 
+                                    onPress={() => setIsDraftsModalOpen(true)}
+                                >
+                                    <Text style={[styles.btnText, { fontSize: 14 }]}>+ Añadir Nuevo Producto</Text>
                                 </Pressable>
-                            )}
-                            <Pressable style={[styles.addBtn, { backgroundColor: '#4b5563', marginRight: 10 }]} onPress={() => setIsHistoryModalOpen(true)}>
-                                <Text style={styles.btnText}>📜 Historial de Cambios {catalogHistory.length > 0 ? `(${catalogHistory.length})` : ''}</Text>
-                            </Pressable>
-                            <Pressable style={[styles.addBtn, { backgroundColor: '#FF9500', marginRight: 10 }]} onPress={() => setIsPasteModalOpen(true)}>
-                                <Text style={styles.btnText}>📋 Pegar desde Excel</Text>
-                            </Pressable>
-                            <Pressable style={[styles.addBtn, { backgroundColor: '#8a2be2' }]} onPress={() => { setComboView('list'); setIsComboModalOpen(true); }}>
-                                <Text style={styles.btnText}>🎁 Gestionar Combos</Text>
-                            </Pressable>
-                            <Pressable style={[styles.addBtn, { backgroundColor: '#10b981', marginLeft: 10 }]} onPress={() => {
-                                setExcelOrderIds(filteredProducts.map(p => p.id));
-                                setIsExcelEditorOpen(true);
-                            }}>
-                                <Text style={styles.btnText}>✏️ Editar Múltiples</Text>
-                            </Pressable>
-                            <Pressable style={[styles.addBtn, { backgroundColor: '#f59e0b', marginLeft: 10 }]} onPress={openVolumePricing}>
-                                <Text style={styles.btnText}>📦 Precio por volumen</Text>
-                            </Pressable>
-                            <Pressable style={[styles.addBtn, { backgroundColor: '#E5E5EA', marginLeft: 'auto' }]} onPress={() => setIsHelpOpen(true)}>
-                                <Text style={[styles.btnText, { color: '#333' }]}>❔ Ayuda</Text>
-                            </Pressable>
-                        </View>
+
+                                {/* Botón acordeón para el resto de herramientas */}
+                                <Pressable 
+                                    style={{ 
+                                        flexDirection: 'row', 
+                                        alignItems: 'center', 
+                                        justifyContent: 'center', 
+                                        gap: 8, 
+                                        paddingVertical: 10, 
+                                        paddingHorizontal: 12, 
+                                        borderRadius: 8, 
+                                        backgroundColor: showExtraActions ? '#f1f5f9' : '#f8fafc',
+                                        borderWidth: 1,
+                                        borderColor: '#e2e8f0'
+                                    }}
+                                    onPress={() => setShowExtraActions(!showExtraActions)}
+                                >
+                                    <FontAwesome name={showExtraActions ? "chevron-up" : "chevron-down"} size={13} color="#475569" />
+                                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#334155' }}>
+                                        {showExtraActions ? 'Ocultar Herramientas' : 'Más Herramientas (Combos, Excel, Especiales...)'}
+                                    </Text>
+                                </Pressable>
+
+                                {showExtraActions && (
+                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
+                                        <Pressable style={[styles.addBtn, { backgroundColor: '#eab308', flex: 1, minWidth: '45%' }]} onPress={openSpecialsPricing}>
+                                            <Text style={styles.btnText}>⚡ Especiales</Text>
+                                        </Pressable>
+                                        <Pressable style={[styles.addBtn, { backgroundColor: '#d97706', flex: 1, minWidth: '45%' }]} onPress={openDailyOffers}>
+                                            <Text style={styles.btnText}>🔥 Ofertas del Día</Text>
+                                        </Pressable>
+                                        <Pressable style={[styles.addBtn, { backgroundColor: '#8a2be2', flex: 1, minWidth: '45%' }]} onPress={() => { setComboView('list'); setIsComboModalOpen(true); }}>
+                                            <Text style={styles.btnText}>🎁 Combos</Text>
+                                        </Pressable>
+                                        <Pressable style={[styles.addBtn, { backgroundColor: '#10b981', flex: 1, minWidth: '45%' }]} onPress={() => {
+                                            setExcelOrderIds(filteredProducts.map(p => p.id));
+                                            setIsExcelEditorOpen(true);
+                                        }}>
+                                            <Text style={styles.btnText}>✏️ Editar Múltiples</Text>
+                                        </Pressable>
+                                        <Pressable style={[styles.addBtn, { backgroundColor: '#dc2626', flex: 1, minWidth: '45%' }]} onPress={() => setIsSmartExcelModalOpen(true)}>
+                                            <Text style={styles.btnText}>📥 Subir Excel</Text>
+                                        </Pressable>
+                                        {!IS_DEDICATED_APP && (
+                                            <Pressable style={[styles.addBtn, { backgroundColor: '#059669', flex: 1, minWidth: '45%' }]} onPress={exportPriceListToExcel}>
+                                                <Text style={styles.btnText}>⬇️ Bajar Plantilla</Text>
+                                            </Pressable>
+                                        )}
+                                        <Pressable style={[styles.addBtn, { backgroundColor: '#FF9500', flex: 1, minWidth: '45%' }]} onPress={() => setIsPasteModalOpen(true)}>
+                                            <Text style={styles.btnText}>📋 Pegar Excel</Text>
+                                        </Pressable>
+                                        <Pressable style={[styles.addBtn, { backgroundColor: '#f59e0b', flex: 1, minWidth: '45%' }]} onPress={openVolumePricing}>
+                                            <Text style={styles.btnText}>📦 Por Volumen</Text>
+                                        </Pressable>
+                                        <Pressable style={[styles.addBtn, { backgroundColor: '#4b5563', flex: 1, minWidth: '45%' }]} onPress={() => setIsHistoryModalOpen(true)}>
+                                            <Text style={styles.btnText}>📜 Historial {catalogHistory.length > 0 ? `(${catalogHistory.length})` : ''}</Text>
+                                        </Pressable>
+                                        {user?.email === 'cocobustos.93@gmail.com' && settings.rawExcelGrid && (
+                                            <Pressable style={[styles.addBtn, { backgroundColor: '#3b82f6', width: '100%' }]} onPress={() => setIsSuperadminRawExcelOpen(true)}>
+                                                <Text style={styles.btnText}>Ver Excel Original</Text>
+                                            </Pressable>
+                                        )}
+                                    </View>
+                                )}
+                            </View>
+                        ) : (
+                            <View style={styles.sectionHeader}>
+                                <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#007AFF', marginRight: 10 }]} onPress={() => setIsDraftsModalOpen(true)}>
+                                    <Text style={styles.btnText}>+ Añadir Nuevo Producto</Text>
+                                </Pressable>
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#eab308', marginRight: 10 }]} onPress={openSpecialsPricing}>
+                                    <Text style={styles.btnText}>⚡ Especiales</Text>
+                                </Pressable>
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#d97706', marginRight: 10 }]} onPress={openDailyOffers}>
+                                    <Text style={styles.btnText}>🔥 Ofertas del Día</Text>
+                                </Pressable>
+                                
+                                {!IS_DEDICATED_APP && (
+                                    <Pressable style={[styles.addBtn, { backgroundColor: '#10b981', marginRight: 10 }]} onPress={exportPriceListToExcel}>
+                                        <Text style={styles.btnText}>⬇️ Exportar Plantilla Excel</Text>
+                                    </Pressable>
+                                )}
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#dc2626', marginRight: 10 }]} onPress={() => setIsSmartExcelModalOpen(true)}>
+
+                                    <Text style={styles.btnText}>📥 Subir Excel Inteligente</Text>
+                                </Pressable>
+                                {user?.email === 'cocobustos.93@gmail.com' && settings.rawExcelGrid && (
+                                    <Pressable style={[styles.addBtn, { backgroundColor: '#3b82f6', marginRight: 10 }]} onPress={() => setIsSuperadminRawExcelOpen(true)}>
+                                        <Text style={styles.btnText}>Ver Excel Original</Text>
+                                    </Pressable>
+                                )}
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#4b5563', marginRight: 10 }]} onPress={() => setIsHistoryModalOpen(true)}>
+                                    <Text style={styles.btnText}>📜 Historial de Cambios {catalogHistory.length > 0 ? `(${catalogHistory.length})` : ''}</Text>
+                                </Pressable>
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#FF9500', marginRight: 10 }]} onPress={() => setIsPasteModalOpen(true)}>
+                                    <Text style={styles.btnText}>📋 Pegar desde Excel</Text>
+                                </Pressable>
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#8a2be2' }]} onPress={() => { setComboView('list'); setIsComboModalOpen(true); }}>
+                                    <Text style={styles.btnText}>🎁 Gestionar Combos</Text>
+                                </Pressable>
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#10b981', marginLeft: 10 }]} onPress={() => {
+                                    setExcelOrderIds(filteredProducts.map(p => p.id));
+                                    setIsExcelEditorOpen(true);
+                                }}>
+                                    <Text style={styles.btnText}>✏️ Editar Múltiples</Text>
+                                </Pressable>
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#f59e0b', marginLeft: 10 }]} onPress={openVolumePricing}>
+                                    <Text style={styles.btnText}>📦 Precio por volumen</Text>
+                                </Pressable>
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#E5E5EA', marginLeft: 'auto' }]} onPress={() => setIsHelpOpen(true)}>
+                                    <Text style={[styles.btnText, { color: '#333' }]}>❔ Ayuda</Text>
+                                </Pressable>
+                            </View>
+                        )}
                     </View>
 
-                    <View style={[styles.section, { marginTop: 40 }]}>
-                        <View style={styles.sectionHeader}>
-                            <Text style={styles.sectionTitle}>Catálogo Actual</Text>
-                            <TextInput style={styles.searchInput} placeholder="Buscar por Nombre o Categoría..." value={filterQuery} onChangeText={setFilterQuery} />
-                            {selectedIds.size > 0 && (
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#FF3B30', marginLeft: 15 }]} onPress={deleteSelected}>
-                                    <Text style={styles.btnText}>Eliminar {selectedIds.size} seleccionados</Text>
-                                </Pressable>
-                            )}
+                    <View style={[styles.section, { marginTop: 40 }, isMobile && { padding: 14 }]}>
+                        <View style={[styles.sectionHeader, isMobile && { flexDirection: 'column', alignItems: 'stretch', gap: 10 }]}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <Text style={styles.sectionTitle}>Catálogo Actual</Text>
+                                {selectedIds.size > 0 && (
+                                    <Pressable style={[styles.addBtn, { backgroundColor: '#FF3B30' }]} onPress={deleteSelected}>
+                                        <Text style={styles.btnText}>Eliminar {selectedIds.size}</Text>
+                                    </Pressable>
+                                )}
+                            </View>
+                            <TextInput style={[styles.searchInput, isMobile && { minWidth: '100%' }]} placeholder="Buscar por Nombre o Categoría..." value={filterQuery} onChangeText={setFilterQuery} />
                         </View>
 
-                        {/* TABS DE VISTA */}
-                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 10 }}>
+                        {/* TABS DE VISTA (Scrollable en mobile) */}
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 10, paddingBottom: 10 }} style={{ marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
                             {[
                                 { id: 'all', label: 'Todos los Productos', color: '#007AFF', icon: '📋' },
                                 { id: 'volume', label: 'Por Volumen', color: '#10b981', icon: '📦' },
@@ -1637,7 +1729,7 @@ export default function BusinessProductsScreen() {
                                     </Pressable>
                                 );
                             })}
-                        </View>
+                        </ScrollView>
 
                         <View style={styles.sectionHeader}>
                             <View style={{ width: '100%', flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -1707,8 +1799,9 @@ export default function BusinessProductsScreen() {
                                 </View>
                             </View>
                         )}
-\n<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
-                            <View style={{ minWidth: 1350, paddingBottom: 20 }}>
+                        <View style={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={{ flexGrow: 1 }} style={{ width: '100%', maxWidth: '100%' }}>
+                                <View style={{ minWidth: 1350, paddingBottom: 20 }}>
                                 {renderHeaderRow(false)}
                                 {visibleOffers.map(offer => {
                                     let originalPrice = (offer.requirements || []).reduce((sum: number, req: any) => {
@@ -2060,8 +2153,9 @@ export default function BusinessProductsScreen() {
                                         </View>
                                     );
                                 })}
-                            </View>
-                        </ScrollView>
+                                </View>
+                            </ScrollView>
+                        </View>
                     </View>
 
                     {/* SETTINGS (Categories and preferences) */}
@@ -2123,7 +2217,7 @@ export default function BusinessProductsScreen() {
 
                         <View style={{ flexDirection: 'row', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                             {/* TARJETA 1 */}
-                            <View style={{ flex: 1, minWidth: 320, backgroundColor: '#f9f9f9', padding: 25, borderRadius: 12, borderWidth: 1, borderColor: '#eee' }}>
+                            <View style={{ flex: 1, minWidth: isMobile ? '100%' : 320, backgroundColor: '#f9f9f9', padding: isMobile ? 15 : 25, borderRadius: 12, borderWidth: 1, borderColor: '#eee' }}>
                                 <Text style={[styles.subtitle, { color: '#333', fontWeight: 'bold' }]}>Estilos del Catálogo de la App</Text>
 
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -2167,7 +2261,7 @@ export default function BusinessProductsScreen() {
                             </View>
 
                             {/* TARJETA 2 */}
-                            <View style={{ flex: 1, minWidth: 320, backgroundColor: '#f9f9f9', padding: 25, borderRadius: 12, borderWidth: 1, borderColor: '#eee' }}>
+                            <View style={{ flex: 1, minWidth: isMobile ? '100%' : 320, backgroundColor: '#f9f9f9', padding: isMobile ? 15 : 25, borderRadius: 12, borderWidth: 1, borderColor: '#eee' }}>
                                 <Text style={[styles.subtitle, { color: '#333', fontWeight: 'bold', marginBottom: 25 }]}>Modificadores de Carrito (Cantidades y Mínimos)</Text>
 
                                 <View style={{ gap: 25 }}>
@@ -2240,7 +2334,7 @@ export default function BusinessProductsScreen() {
                                 </View>
                             </View>
                             {/* TARJETA 3: Agenda */}
-                            <View style={{ flex: 1, minWidth: 320, backgroundColor: '#f9f9f9', padding: 25, borderRadius: 12, borderWidth: 1, borderColor: '#eee' }}>
+                            <View style={{ flex: 1, minWidth: isMobile ? '100%' : 320, backgroundColor: '#f9f9f9', padding: isMobile ? 15 : 25, borderRadius: 12, borderWidth: 1, borderColor: '#eee' }}>
                                 <Text style={[styles.subtitle, { color: '#333', fontWeight: 'bold', marginBottom: 25 }]}>Agenda y Horarios de Pedido</Text>
 
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2287,7 +2381,7 @@ export default function BusinessProductsScreen() {
 
                             {/* TARJETA 4: Reglas Gastronómicas (Mix & Match / Cross-selling) */}
                             {settings.isFoodBusiness && (
-                                <View style={{ flex: 1, minWidth: 320, backgroundColor: '#fdf2f8', padding: 25, borderRadius: 12, borderWidth: 1, borderColor: '#fbcfe8' }}>
+                                <View style={{ flex: 1, minWidth: isMobile ? '100%' : 320, backgroundColor: '#fdf2f8', padding: isMobile ? 15 : 25, borderRadius: 12, borderWidth: 1, borderColor: '#fbcfe8' }}>
                                     <Text style={[styles.subtitle, { color: '#db2777', fontWeight: 'bold', marginBottom: 20 }]}>🍡 Descuentos Mix & Match (Por Cantidad)</Text>
 
                                     {/* List of rules */}
@@ -4951,11 +5045,11 @@ export default function BusinessProductsScreen() {
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f4f5f7' },
-    content: { padding: 30, paddingBottom: 100 },
+    container: { flex: 1, backgroundColor: '#f4f5f7', width: '100%', maxWidth: '100vw' as any, overflowX: 'hidden' as any },
+    content: { padding: 30, paddingBottom: 100, width: '100%', maxWidth: '100%' },
     pageTitle: { fontSize: 28, fontWeight: '800', color: '#111', marginBottom: 5 },
     subtitle: { fontSize: 14, color: '#666', marginBottom: 30 },
-    section: { backgroundColor: '#fff', borderRadius: 12, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10 },
+    section: { backgroundColor: '#fff', borderRadius: 12, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, width: '100%', maxWidth: '100%', overflow: 'hidden' as any },
     sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' },
     sectionTitle: { fontSize: 20, fontWeight: 'bold', color: '#222', marginRight: 15 },
     searchInput: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 8, flex: 1, minWidth: 200 },

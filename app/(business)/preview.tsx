@@ -1,10 +1,12 @@
 import { FontAwesome } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
-import { Platform, StyleSheet, View, Text, Pressable } from 'react-native';
+import { Platform, StyleSheet, View, Text, Pressable, useWindowDimensions } from 'react-native';
 import { useAppContext } from '../../src/context/AppContext';
 
 export default function AppPreviewScreen() {
     const { businessProfile, products, settings } = useAppContext();
+    const { width } = useWindowDimensions();
+    const isMobile = width < 768;
 
     const [isStarted, setIsStarted] = React.useState(false);
     const [reloadKey, setReloadKey] = React.useState(0);
@@ -18,6 +20,70 @@ export default function AppPreviewScreen() {
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
                 <Text>El visualizador de app solo funciona en la web (escritorio).</Text>
+            </View>
+        );
+    }
+
+    if (isMobile) {
+        return (
+            <View style={{ flex: 1, backgroundColor: '#f8fafc' }}>
+                {/* Barra de control compacta para mobile */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 10, backgroundColor: '#111' }}>
+                    <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 14, flex: 1, marginRight: 10 }} numberOfLines={1}>
+                        {businessProfile.name || 'Vista Previa'}
+                    </Text>
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                        <Pressable 
+                            style={{ backgroundColor: '#2563eb', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                            onPress={() => setReloadKey(prev => prev + 1)}
+                        >
+                            <FontAwesome name="refresh" size={13} color="#fff" />
+                            <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Recargar</Text>
+                        </Pressable>
+                        <Pressable 
+                            style={{ backgroundColor: '#334155', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                            onPress={() => {
+                                if (typeof window !== 'undefined') {
+                                    window.open(`/?preview=1&store=${businessProfile.id}`, '_blank');
+                                }
+                            }}
+                        >
+                            <FontAwesome name="external-link" size={13} color="#fff" />
+                            <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>Abrir</Text>
+                        </Pressable>
+                    </View>
+                </View>
+
+                {/* Previsualización 100% full width en smartphone sin marcos estorbosos */}
+                <View style={{ flex: 1, backgroundColor: '#fff', position: 'relative' }}>
+                    {!isStarted ? (
+                        <View style={styles.startOverlay}>
+                            <View style={[styles.startLogo, { backgroundColor: businessProfile.primaryColor }]}>
+                                <FontAwesome name="shopping-basket" size={40} color="#fff" />
+                            </View>
+                            <Text style={styles.startTitle}>{businessProfile.name}</Text>
+                            <Pressable 
+                                style={[styles.startBtn, { backgroundColor: businessProfile.primaryColor }]} 
+                                onPress={() => setIsStarted(true)}
+                            >
+                                <Text style={styles.startBtnText}>Ingresar Pedido</Text>
+                            </Pressable>
+                            <Text style={styles.startHint}>Simulador de Pedidos</Text>
+                        </View>
+                    ) : (
+                        <iframe
+                            key={dynamicKey}
+                            src={`/?preview=1&store=${businessProfile.id}`}
+                            style={{
+                                width: '100%',
+                                height: '100%',
+                                border: 'none',
+                                overflowY: 'auto',
+                            }}
+                            title="Emulador Mobile"
+                        />
+                    )}
+                </View>
             </View>
         );
     }

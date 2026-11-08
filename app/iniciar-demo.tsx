@@ -8,7 +8,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import { app } from '../src/config/firebase';
 import { useAppContext } from '../src/context/AppContext';
 import { BusinessProfile } from '../src/types';
-import { getOrGenerateAccessPin } from '../src/utils/prospectManager';
+import { getOrGenerateAccessPin, decodeDemoToken } from '../src/utils/prospectManager';
 
 export default function IniciarDemoScreen() {
     const router = useRouter();
@@ -55,10 +55,14 @@ export default function IniciarDemoScreen() {
 
     const { loadBusinessById, setUser } = useAppContext();
 
-    // Precarga automática desde los parámetros del link de WhatsApp (b=usuario, name=Nombre) o de la URL directa en web
+    // Precarga automática desde los parámetros del link (d=token_encriptado, b=usuario, name=Nombre) o de la URL directa en web
+    const rawDParam = getQueryParam('d');
+    const decodedSlugFromD = rawDParam ? decodeDemoToken(rawDParam) : '';
+    const initialSlug = decodedSlugFromD || getQueryParam('b') || getQueryParam('u') || getQueryParam('lead') || '';
+
     const [businessName, setBusinessName] = useState(() => getQueryParam('name') || getQueryParam('n') || '');
-    const [username, setUsername] = useState(() => getQueryParam('b') || getQueryParam('u') || '');
-    const [isDirectInvite, setIsDirectInvite] = useState(() => Boolean(getQueryParam('b') || getQueryParam('u') || getQueryParam('name') || getQueryParam('n') || getQueryParam('lead')));
+    const [username, setUsername] = useState(() => initialSlug);
+    const [isDirectInvite, setIsDirectInvite] = useState(() => Boolean(rawDParam || getQueryParam('b') || getQueryParam('u') || getQueryParam('name') || getQueryParam('n') || getQueryParam('lead')));
     const [ownerPhone, setOwnerPhone] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -131,7 +135,7 @@ export default function IniciarDemoScreen() {
             return;
         }
 
-        const targetSlug = (username || getQueryParam('b') || getQueryParam('lead') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const targetSlug = (username || decodedSlugFromD || getQueryParam('b') || getQueryParam('lead') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
         const validPin = (expectedAccessPin || getOrGenerateAccessPin(targetSlug)).toLowerCase();
 
         if (cleanInput !== validPin) {
@@ -156,7 +160,7 @@ export default function IniciarDemoScreen() {
                 accessPin: validPin
             }, { merge: true });
 
-            // Reingresar suavemente al panel
+            // Reingresar de inmediato al panel
             await handleReEnterDemo(targetSlug, claimedBusinessName || businessName);
         } catch (e) {
             console.error('Error authorizing device with pin:', e);
@@ -166,7 +170,7 @@ export default function IniciarDemoScreen() {
         }
     };
 
-    // Reingresar a la demo existente del cliente
+    // Reingresar a la demo existente del cliente (con redirección directa garantizada sin congelamientos)
     const handleReEnterDemo = async (slug: string, name?: string) => {
         setLoading(true);
         setError('');
@@ -179,13 +183,28 @@ export default function IniciarDemoScreen() {
                 const userCredential = await signInWithEmailAndPassword(auth, finalAuthEmail, finalAuthPassword);
                 const uid = userCredential.user.uid;
                 await loadBusinessById(slug);
-                setUser({ id: uid, email: finalAuthEmail, role: 'business', name: name || '', surname: '', address: '' });
-                router.replace('/(business)/admin');
+                const userObj = { id: uid, email: finalAuthEmail, role: 'business' as const, name: name || '', surname: '', address: '' };
+                await AsyncStorage.setItem('user', JSON.stringify(userObj));
+                setUser(userObj);
+
+                if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                    window.location.href = '/admin';
+                } else {
+                    router.replace('/(business)/admin');
+                }
                 return;
             } catch (signInErr: any) {
                 console.log('SignIn error, attempting direct load:', signInErr);
                 await loadBusinessById(slug);
-                router.replace('/(business)/admin');
+                const userObj = { id: slug, email: finalAuthEmail, role: 'business' as const, name: name || '', surname: '', address: '' };
+                await AsyncStorage.setItem('user', JSON.stringify(userObj));
+                setUser(userObj);
+
+                if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                    window.location.href = '/admin';
+                } else {
+                    router.replace('/(business)/admin');
+                }
                 return;
             }
         } catch (err: any) {
@@ -196,11 +215,13 @@ export default function IniciarDemoScreen() {
         }
     };
     
-    // Si los params llegan luego de la hidratación inicial de Expo Router en Web o si viene 'lead' para leer desde Firestore
+    // Si los params llegan luego de la hidratación inicial de Expo Router en Web o si viene 'lead'/'d' para leer desde Firestore
     useEffect(() => {
-        const leadId = getQueryParam('lead') || getQueryParam('b');
+        const rawD = getQueryParam('d');
+        const decodedFromD = rawD ? decodeDemoToken(rawD) : '';
+        const leadId = decodedFromD || getQueryParam('lead') || getQueryParam('b') || getQueryParam('u');
         const nameFromUrl = getQueryParam('name') || getQueryParam('n');
-        const userFromUrl = getQueryParam('b') || getQueryParam('u');
+        const userFromUrl = decodedFromD || getQueryParam('b') || getQueryParam('u');
         const codeFromUrl = (getQueryParam('c') || getQueryParam('promo') || getQueryParam('plan')).toLowerCase();
 
         if (nameFromUrl) {
@@ -209,7 +230,7 @@ export default function IniciarDemoScreen() {
         if (userFromUrl) {
             setUsername(userFromUrl);
         }
-        if (nameFromUrl || userFromUrl || leadId) {
+        if (nameFromUrl || userFromUrl || leadId || rawD) {
             setIsDirectInvite(true);
         }
         if (codeFromUrl) {
@@ -253,6 +274,9 @@ export default function IniciarDemoScreen() {
                     }
                     if (data.planPrice) {
                         setPlanPrice(data.planPrice);
+                    }
+                    if (data.accessPin) {
+                        setExpectedAccessPin(data.accessPin);
                     }
                     setIsDirectInvite(true);
                 }

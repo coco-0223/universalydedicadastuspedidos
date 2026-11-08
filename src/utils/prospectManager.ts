@@ -240,6 +240,57 @@ export const cleanBusinessNameForComparison = (name: string): string => {
         .trim();
 };
 
+/**
+ * Codifica el slug de un prospecto en un token corto, limpio y opaco para la URL
+ * (ej: 'coco' -> 'Y29jbw', 'carniceriahurlingham' -> 'Y2FybmljZXJpYWh1cmxpbmdoYW0')
+ * Evita mostrar nombres, precios y parámetros largos en el enlace de WhatsApp.
+ */
+export const encodeDemoToken = (slug: string): string => {
+    if (!slug) return '';
+    try {
+        if (typeof btoa !== 'undefined') {
+            return btoa(unescape(encodeURIComponent(slug)))
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
+        }
+        if (typeof Buffer !== 'undefined') {
+            return Buffer.from(slug, 'utf8')
+                .toString('base64')
+                .replace(/\+/g, '-')
+                .replace(/\//g, '_')
+                .replace(/=+$/, '');
+        }
+    } catch (e) {}
+    return slug;
+};
+
+/**
+ * Decodifica el token de la URL recuperando el slug original del prospecto.
+ * Si el token ya es un slug en texto plano, lo devuelve intacto.
+ */
+export const decodeDemoToken = (token: string): string => {
+    if (!token) return '';
+    try {
+        let base = token.replace(/-/g, '+').replace(/_/g, '/');
+        while (base.length % 4) base += '=';
+
+        let decoded = '';
+        if (typeof atob !== 'undefined') {
+            decoded = decodeURIComponent(escape(atob(base)));
+        } else if (typeof Buffer !== 'undefined') {
+            decoded = Buffer.from(base, 'base64').toString('utf8');
+        }
+
+        // Verificar si el resultado decodificado es un slug válido (alfanumérico y guiones)
+        if (decoded && /^[a-zA-Z0-9_-]+$/.test(decoded)) {
+            return decoded.toLowerCase();
+        }
+    } catch (e) {}
+    // Fallback: si no era base64 o falló la decodificación, retornar el token sanitizado
+    return token.toLowerCase().replace(/[^a-z0-9_-]/g, '');
+};
+
 export const renderWhatsAppMessage = (
     templateText: string,
     params: {
@@ -278,7 +329,8 @@ export const renderWhatsAppMessage = (
     }
 
     const pin = getOrGenerateAccessPin(params.slug, params.accessPin);
-    const link = `${origin}/iniciar-demo?lead=${encodeURIComponent(params.slug)}&b=${encodeURIComponent(params.slug)}&name=${encodeURIComponent(params.businessName)}&c=${encodeURIComponent(params.code)}&pin=${encodeURIComponent(pin)}`;
+    const token = encodeDemoToken(params.slug);
+    const link = `${origin}/iniciar-demo?d=${encodeURIComponent(token)}`;
     
     const salutationName = params.contactName || params.businessName || 'tu negocio';
 

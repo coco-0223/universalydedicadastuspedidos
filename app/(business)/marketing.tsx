@@ -593,12 +593,12 @@ export default function BusinessMarketingScreen() {
 
                     {/* CARD: CUPONES */}
                     <View style={[styles.card, { width: isDesktop ? '100%' : '100%' }]}>
-                        <View style={styles.row}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                                <Text style={styles.cardTitle}>🎫 Cupones de Descuento</Text>
+                        <View style={{ flexDirection: isDesktop ? 'row' : 'column', justifyContent: 'space-between', alignItems: isDesktop ? 'center' : 'flex-start', gap: 10, marginBottom: 15 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: isDesktop ? 'auto' : '100%' }}>
+                                <Text style={[styles.cardTitle, { marginBottom: 0 }]}>🎫 Cupones de Descuento</Text>
                                 <Switch value={couponsActive} onValueChange={setCouponsActive} />
                             </View>
-                            <Pressable style={styles.addBtn} onPress={addCoupon}><Text style={styles.addBtnText}>+ Crear Cupón</Text></Pressable>
+                            <Pressable style={[styles.addBtn, !isDesktop && { alignSelf: 'flex-start' }]} onPress={addCoupon}><Text style={styles.addBtnText}>+ Crear Cupón</Text></Pressable>
                         </View>
                         <View style={styles.grid}>
                             {coupons.map((c, idx) => (
@@ -668,12 +668,12 @@ export default function BusinessMarketingScreen() {
 
                     {/* CARD: HITOS (FIDELIDAD) */}
                     <View style={[styles.card, { width: '100%', backgroundColor: '#f8fafc' }]}>
-                        <View style={styles.row}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                                <Text style={styles.cardTitle}>🏅 Fidelidad e Hitos de Gasto</Text>
+                        <View style={{ flexDirection: isDesktop ? 'row' : 'column', justifyContent: 'space-between', alignItems: isDesktop ? 'center' : 'flex-start', gap: 10, marginBottom: 15 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: isDesktop ? 'auto' : '100%' }}>
+                                <Text style={[styles.cardTitle, { marginBottom: 0 }]}>🏅 Fidelidad e Hitos de Gasto</Text>
                                 <Switch value={milestonesActive} onValueChange={setMilestonesActive} />
                             </View>
-                            <Pressable style={styles.addBtn} onPress={addMilestoneGroup}><Text style={styles.addBtnText}>+ Nuevo Conjunto</Text></Pressable>
+                            <Pressable style={[styles.addBtn, !isDesktop && { alignSelf: 'flex-start' }]} onPress={addMilestoneGroup}><Text style={styles.addBtnText}>+ Nuevo Conjunto</Text></Pressable>
                         </View>
                         {milestoneGroups.map((g, gIdx) => (
                             <View key={g.id} style={styles.groupItem}>
@@ -715,9 +715,9 @@ export default function BusinessMarketingScreen() {
 
                     {/* CARD: SORTEOS */}
                     <View style={[styles.card, { width: '100%', backgroundColor: '#f0fdfa' }]}>
-                        <View style={styles.row}>
-                            <Text style={[styles.cardTitle, { color: '#0f766e' }]}>🎁 Sorteos Activos</Text>
-                            <Pressable style={[styles.addBtn, { backgroundColor: '#0f766e' }]} onPress={addRaffle}><Text style={styles.addBtnText}>+ Crear Sorteo</Text></Pressable>
+                        <View style={{ flexDirection: isDesktop ? 'row' : 'column', justifyContent: 'space-between', alignItems: isDesktop ? 'center' : 'flex-start', gap: 10, marginBottom: 15 }}>
+                            <Text style={[styles.cardTitle, { color: '#0f766e', marginBottom: 0 }]}>🎁 Sorteos Activos</Text>
+                            <Pressable style={[styles.addBtn, { backgroundColor: '#0f766e' }, !isDesktop && { alignSelf: 'flex-start' }]} onPress={addRaffle}><Text style={styles.addBtnText}>+ Crear Sorteo</Text></Pressable>
                         </View>
                         {raffles.map((r, idx) => (
                             <View key={r.id} style={styles.groupItem}>
