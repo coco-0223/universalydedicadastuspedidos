@@ -8,6 +8,7 @@ export interface ProspectLead {
     phone: string; // Whatsapp
     planPrice: number; // Tarifa
     priceCode: string; // ej: k9, k12, k15, vp26
+    accessPin?: string; // Clave de acceso de 6 caracteres (3 números + 3 letras, ej: 482kpt)
     email?: string; // Email
     instagram?: string; // Instagram (ej: @carniceriadonjuan o link)
     website?: string; // Página Web (ej: www.donjuan.com.ar)
@@ -31,7 +32,7 @@ export interface ProspectLead {
 export interface WhatsAppTemplate {
     id: string;
     name: string;
-    text: string; // Puede contener [nombre], [negocio], [precio], [link], [dias], [responsable], [zona], [provincia], [instagram]
+    text: string; // Puede contener [nombre], [negocio], [precio], [link], [clave], [dias], [responsable], [zona], [provincia], [instagram]
     isDefault?: boolean;
     createdAt: string;
 }
@@ -40,23 +41,65 @@ export const DEFAULT_WHATSAPP_TEMPLATES: WhatsAppTemplate[] = [
     {
         id: 'promo_7dias',
         name: 'Promo 7 días gratis (Estándar)',
-        text: '¡Hola [nombre]! 👋 Te armamos una demo personalizada de tu tienda online para [negocio] en TusPedidos para que la pruebes gratis por [dias] días: [link]\n\nSi te sirve para tu negocio, tenés una tarifa promocional fijada de $[precio]/mes.',
+        text: '¡Hola [nombre]! 👋 Te armamos una demo personalizada de tu tienda online para [negocio] en TusPedidos para que la pruebes gratis por [dias] días: [link]\n\n🔑 Tu clave de acceso: [clave]\n\nSi te sirve para tu negocio, tenés una tarifa promocional fijada de $[precio]/mes.',
         isDefault: true,
         createdAt: new Date().toISOString()
     },
     {
         id: 'directo_catalogo',
         name: 'Invitación a subir catálogo',
-        text: 'Hola [nombre]! 🚀 Ya podés entrar a gestionar el catálogo y pedidos de [negocio] sin costo: [link]\n\nCualquier duda con la carga de productos o precios me avisás por acá.',
+        text: 'Hola [nombre]! 🚀 Ya podés entrar a gestionar el catálogo y pedidos de [negocio] sin costo: [link]\n\n🔑 Tu clave de acceso: [clave]\n\nCualquier duda con la carga de productos o precios me avisás por acá.',
         createdAt: new Date().toISOString()
     },
     {
         id: 'recordatorio_oferta',
         name: 'Cupo exclusivo / Tarifa especial',
-        text: 'Hola [nombre], ¿cómo estás? Te reservamos uno de los cupos bonificados para [negocio] con acceso de prueba acá: [link]\n\nLa suscripción mensual te queda congelada en $[precio]/mes.',
+        text: 'Hola [nombre], ¿cómo estás? Te reservamos uno de los cupos bonificados para [negocio] con acceso de prueba acá: [link]\n\n🔑 Tu clave de acceso: [clave]\n\nLa suscripción mensual te queda congelada en $[precio]/mes.',
         createdAt: new Date().toISOString()
     }
 ];
+
+/**
+ * Genera de forma limpia y determinística una clave de acceso de 6 caracteres
+ * compuesta exactamente por 3 números y 3 letras (ej: 482kpt).
+ * Sin caracteres ambiguos como '0', 'o', '1', 'l', 'i'.
+ */
+export const getOrGenerateAccessPin = (slug?: string, existingPin?: string): string => {
+    if (existingPin && existingPin.trim().length === 6) {
+        return existingPin.trim().toLowerCase();
+    }
+    const letters = 'abcdefghjkmnpqrstuvwxyz';
+    const digits = '23456789';
+
+    if (!slug) {
+        let numPart = '';
+        for (let i = 0; i < 3; i++) numPart += digits[Math.floor(Math.random() * digits.length)];
+        let letPart = '';
+        for (let i = 0; i < 3; i++) letPart += letters[Math.floor(Math.random() * letters.length)];
+        return `${numPart}${letPart}`;
+    }
+
+    const clean = slug.toLowerCase().replace(/[^a-z0-9]/g, '') || 'demo';
+    let hash = 0;
+    for (let i = 0; i < clean.length; i++) {
+        hash = ((hash << 5) - hash) + clean.charCodeAt(i);
+        hash |= 0;
+    }
+    hash = Math.abs(hash);
+
+    let numPart = '';
+    let letPart = '';
+    let temp = hash;
+    for (let i = 0; i < 3; i++) {
+        numPart += digits[temp % digits.length];
+        temp = Math.floor(temp / digits.length) + (i * 7);
+    }
+    for (let i = 0; i < 3; i++) {
+        letPart += letters[temp % letters.length];
+        temp = Math.floor(temp / letters.length) + (i * 11);
+    }
+    return `${numPart}${letPart}`;
+};
 
 export const priceToOpaqueCode = (price: number): string => {
     if (price === 9000) return 'fn26';
@@ -205,6 +248,7 @@ export const renderWhatsAppMessage = (
         price: number;
         slug: string;
         code: string;
+        accessPin?: string;
         responsable?: string;
         zone?: string;
         province?: string;
@@ -233,7 +277,8 @@ export const renderWhatsAppMessage = (
         origin = defaultPublicUrl;
     }
 
-    const link = `${origin}/iniciar-demo?lead=${encodeURIComponent(params.slug)}&b=${encodeURIComponent(params.slug)}&name=${encodeURIComponent(params.businessName)}&c=${encodeURIComponent(params.code)}`;
+    const pin = getOrGenerateAccessPin(params.slug, params.accessPin);
+    const link = `${origin}/iniciar-demo?lead=${encodeURIComponent(params.slug)}&b=${encodeURIComponent(params.slug)}&name=${encodeURIComponent(params.businessName)}&c=${encodeURIComponent(params.code)}&pin=${encodeURIComponent(pin)}`;
     
     const salutationName = params.contactName || params.businessName || 'tu negocio';
 
@@ -242,6 +287,7 @@ export const renderWhatsAppMessage = (
         .replace(/\[negocio\]/gi, params.businessName || 'tu negocio')
         .replace(/\[precio\]/gi, (params.price || 9000).toLocaleString())
         .replace(/\[link\]/gi, link)
+        .replace(/\[clave\]/gi, pin)
         .replace(/\[dias\]/gi, (params.dias || 7).toString())
         .replace(/\[responsable\]/gi, params.responsable || '')
         .replace(/\[zona\]/gi, params.zone || '')

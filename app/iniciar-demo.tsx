@@ -8,6 +8,7 @@ import { FontAwesome } from '@expo/vector-icons';
 import { app } from '../src/config/firebase';
 import { useAppContext } from '../src/context/AppContext';
 import { BusinessProfile } from '../src/types';
+import { getOrGenerateAccessPin } from '../src/utils/prospectManager';
 
 export default function IniciarDemoScreen() {
     const router = useRouter();
@@ -66,6 +67,8 @@ export default function IniciarDemoScreen() {
     // Estado de pertenencia: 'checking' | 'owner' | 'claimed_by_other' | 'available'
     const [existingOwnership, setExistingOwnership] = useState<'checking' | 'owner' | 'claimed_by_other' | 'available'>('available');
     const [claimedBusinessName, setClaimedBusinessName] = useState('');
+    const [expectedAccessPin, setExpectedAccessPin] = useState('');
+    const [inputPin, setInputPin] = useState('');
     
     // Función para verificar si el negocio ya fue creado y si este dispositivo es el dueño
     const checkBusinessOwnership = async (slug: string) => {
@@ -77,6 +80,8 @@ export default function IniciarDemoScreen() {
             if (businessDoc.exists()) {
                 const bData = businessDoc.data();
                 const bProfile = bData.profile || {};
+                const pin = bData.accessPin || bProfile.accessPin || getOrGenerateAccessPin(slug);
+                setExpectedAccessPin(pin);
                 setClaimedBusinessName(bProfile.name || slug);
 
                 // Comprobar si ESTE dispositivo es el legítimo creador
@@ -95,14 +100,69 @@ export default function IniciarDemoScreen() {
                     // Reingreso automático y directo
                     handleReEnterDemo(slug, bProfile.name || slug);
                 } else {
-                    // Es OTRA persona a la que le reenviaron el link
-                    setExistingOwnership('claimed_by_other');
+                    // Si no está registrado en este navegador aún, verificar si vino el pin por URL
+                    const urlPin = (getQueryParam('pin') || getQueryParam('p') || '').toLowerCase();
+                    if (urlPin && urlPin === pin.toLowerCase()) {
+                        const deviceKey = 'dev_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+                        await AsyncStorage.setItem('tp_device_key_' + slug, deviceKey);
+                        await AsyncStorage.setItem('tp_device_key', deviceKey);
+                        await AsyncStorage.setItem('tp_trial_business_id', slug);
+                        setExistingOwnership('owner');
+                        handleReEnterDemo(slug, bProfile.name || slug);
+                    } else {
+                        // Es un dispositivo nuevo o reenviado: pedir la clave de acceso de 6 caracteres
+                        setExistingOwnership('claimed_by_other');
+                    }
                 }
             } else {
                 setExistingOwnership('available');
+                setExpectedAccessPin(getOrGenerateAccessPin(slug));
             }
         } catch (e) {
             console.warn('Error checking business ownership:', e);
+        }
+    };
+
+    // Validar el PIN de 6 caracteres (3 números + 3 letras) e ingresar
+    const handleValidatePinAndEnter = async () => {
+        const cleanInput = inputPin.trim().toLowerCase();
+        if (!cleanInput) {
+            setError('Por favor ingresá tu clave de acceso de 6 caracteres.');
+            return;
+        }
+
+        const targetSlug = (username || getQueryParam('b') || getQueryParam('lead') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+        const validPin = (expectedAccessPin || getOrGenerateAccessPin(targetSlug)).toLowerCase();
+
+        if (cleanInput !== validPin) {
+            setError('Clave incorrecta. Por favor revisá el mensaje de WhatsApp que te enviamos.');
+            return;
+        }
+
+        setLoading(true);
+        setError('');
+        try {
+            // Clave CORRECTA: Autorizar inmediatamente este dispositivo
+            const deviceKey = 'dev_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+            await AsyncStorage.setItem('tp_device_key_' + targetSlug, deviceKey);
+            await AsyncStorage.setItem('tp_device_key', deviceKey);
+            await AsyncStorage.setItem('tp_trial_business_id', targetSlug);
+            await AsyncStorage.setItem('tp_trial_created', 'true');
+
+            // Guardar en Firestore para sincronizar
+            const db = getFirestore(app);
+            await setDoc(doc(db, 'businesses', targetSlug), {
+                deviceKey,
+                accessPin: validPin
+            }, { merge: true });
+
+            // Reingresar suavemente al panel
+            await handleReEnterDemo(targetSlug, claimedBusinessName || businessName);
+        } catch (e) {
+            console.error('Error authorizing device with pin:', e);
+            setError('Hubo un error al validar. Intentá de nuevo.');
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -371,6 +431,7 @@ export default function IniciarDemoScreen() {
 
             // Clave única de dispositivo para vincular este teléfono/navegador con su tienda
             const deviceKey = 'dev_' + Math.random().toString(36).substring(2) + Date.now().toString(36);
+            const accessPin = getOrGenerateAccessPin(safeUsername, leadRecord?.accessPin);
 
             const newProfile: BusinessProfile = {
                 id: safeUsername,
@@ -388,9 +449,11 @@ export default function IniciarDemoScreen() {
             await setDoc(businessRef, {
                 ownerId: uid,
                 deviceKey: deviceKey,
+                accessPin: accessPin,
                 profile: {
                     ...newProfile,
-                    deviceKey: deviceKey
+                    deviceKey: deviceKey,
+                    accessPin: accessPin
                 },
                 settings: {
                     categories: [],
@@ -445,51 +508,70 @@ export default function IniciarDemoScreen() {
         }
     };
 
-    // Caso 1: Enlace abierto por OTRA persona a quien le reenviaron el WhatsApp
+    // Caso 1: Enlace abierto sin autorización de dispositivo (pide la Clave de Acceso de 6 caracteres)
     if (existingOwnership === 'claimed_by_other') {
         return (
             <View style={styles.container}>
                 <View style={styles.card}>
-                    <View style={{ alignItems: 'center', marginBottom: 20 }}>
-                        <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: '#fef2f2', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
-                            <FontAwesome name="lock" size={30} color="#ef4444" />
+                    <View style={{ alignItems: 'center', marginBottom: 16 }}>
+                        <View style={{ width: 60, height: 60, borderRadius: 30, backgroundColor: '#eff6ff', alignItems: 'center', justifyContent: 'center', marginBottom: 12 }}>
+                            <FontAwesome name="key" size={26} color="#0284c7" />
                         </View>
-                        <Text style={[styles.title, { textAlign: 'center' }]}>Invitación Ya Activada</Text>
-                        <Text style={[styles.subtitle, { textAlign: 'center', marginTop: 8 }]}>
-                            Este enlace ya fue activado y vinculado al titular del negocio <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>"{claimedBusinessName || businessName || username}"</Text>.
-                        </Text>
-                        <Text style={{ fontSize: 13, color: '#64748b', textAlign: 'center', marginTop: 8 }}>
-                            Por seguridad, no es posible acceder ni gestionar el panel de otra persona.
+                        <Text style={[styles.title, { textAlign: 'center', fontSize: 22 }]}>Esta demo ya fue activada</Text>
+                        <Text style={[styles.subtitle, { textAlign: 'center', marginTop: 6 }]}>
+                            El catálogo de <Text style={{ fontWeight: 'bold', color: '#0f172a' }}>"{claimedBusinessName || businessName || username}"</Text> ya está en marcha.
                         </Text>
                     </View>
 
-                    <View style={{ backgroundColor: '#f0fdf4', padding: 16, borderRadius: 12, borderWidth: 1, borderColor: '#bbf7d0', marginBottom: 20 }}>
-                        <Text style={{ fontWeight: 'bold', color: '#166534', fontSize: 14, marginBottom: 4, textAlign: 'center' }}>
-                            ¿Querés probar TusPedidos para tu propio negocio?
+                    {/* Validación por Clave de Acceso (3 números + 3 letras) sin usuario ni mail */}
+                    <View style={{ backgroundColor: '#f8fafc', padding: 18, borderRadius: 14, borderWidth: 1, borderColor: '#e2e8f0', marginBottom: 18 }}>
+                        <Text style={{ fontWeight: '700', color: '#1e293b', fontSize: 14, marginBottom: 4 }}>
+                            ¿Sos el titular de este negocio?
                         </Text>
-                        <Text style={{ fontSize: 12, color: '#15803d', textAlign: 'center' }}>
-                            Creá tu propio catálogo digital gratis en 10 segundos y probalo sin compromiso durante 7 días.
+                        <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+                            Ingresá la clave de acceso de 6 caracteres que te enviamos por WhatsApp para vincular este dispositivo y entrar a tu panel:
                         </Text>
+
+                        <Text style={styles.label}>Clave de Acceso (3 números y 3 letras)</Text>
+                        <TextInput
+                            style={[styles.input, { letterSpacing: 4, fontWeight: 'bold', fontSize: 20, textAlign: 'center', textTransform: 'lowercase', backgroundColor: '#fff' }]}
+                            placeholder="ej: 384kpt"
+                            value={inputPin}
+                            onChangeText={t => { setInputPin(t.trim().toLowerCase()); setError(''); }}
+                            autoCapitalize="none"
+                            maxLength={6}
+                        />
+
+                        {error ? <Text style={[styles.errorText, { marginTop: 6, marginBottom: 10 }]}>{error}</Text> : null}
+
+                        <Pressable
+                            style={[styles.mainBtn, { marginTop: 6 }]}
+                            onPress={handleValidatePinAndEnter}
+                            disabled={loading}
+                        >
+                            {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.mainBtnText}>Entrar a mi Panel 📋</Text>}
+                        </Pressable>
                     </View>
 
-                    <Pressable
-                        style={[styles.mainBtn, { backgroundColor: '#0284c7' }]}
-                        onPress={() => {
-                            setExistingOwnership('available');
-                            setUsername('');
-                            setBusinessName('');
-                            setIsDirectInvite(false);
-                            if (typeof window !== 'undefined') {
-                                window.history.replaceState({}, '', '/iniciar-demo');
-                            }
-                        }}
-                    >
-                        <Text style={styles.mainBtnText}>Crear mi Propia Prueba Gratis 🚀</Text>
-                    </Pressable>
-
-                    <Pressable style={{ marginTop: 20, alignItems: 'center' }} onPress={() => router.push('/business-auth')}>
-                        <Text style={{ color: '#64748b', fontWeight: '600', fontSize: 13 }}>¿Ya tenés una cuenta? Ingresá acá</Text>
-                    </Pressable>
+                    <View style={{ borderTopWidth: 1, borderTopColor: '#f1f5f9', paddingTop: 14, alignItems: 'center' }}>
+                        <Text style={{ fontSize: 12, color: '#64748b', textAlign: 'center', marginBottom: 8 }}>
+                            ¿Te reenviaron este enlace y querés una tienda para vos?
+                        </Text>
+                        <Pressable
+                            style={{ backgroundColor: '#f1f5f9', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8 }}
+                            onPress={() => {
+                                setExistingOwnership('available');
+                                setUsername('');
+                                setBusinessName('');
+                                setIsDirectInvite(false);
+                                if (typeof window !== 'undefined') {
+                                    window.history.replaceState({}, '', '/iniciar-demo');
+                                }
+                            }}
+                        >
+                            <Text style={{ color: '#0f172a', fontWeight: '700', fontSize: 13 }}>Crear mi Propia Prueba Gratis 🚀</Text>
+                        </Pressable>
+                    </View>
                 </View>
             </View>
         );
