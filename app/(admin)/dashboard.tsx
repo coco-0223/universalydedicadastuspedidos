@@ -617,6 +617,17 @@ export default function AdminDashboardScreen() {
         }
     };
 
+    // Sanitizador de objetos para Firestore (elimina cualquier campo undefined para evitar FirebaseError)
+    const sanitizeForFirestore = <T extends Record<string, any>>(obj: T): T => {
+        const cleanObj: Record<string, any> = {};
+        for (const [key, value] of Object.entries(obj)) {
+            if (value !== undefined) {
+                cleanObj[key] = value;
+            }
+        }
+        return cleanObj as T;
+    };
+
     // --- Parser de Carga Masiva (Ctrl+V desde Google Sheets / Excel) con Detección en Etapas ---
     const handleParsePastedData = (rawText: string) => {
         setPasteRawText(rawText);
@@ -920,7 +931,7 @@ export default function AdminDashboardScreen() {
             const batch = writeBatch(db);
             leadsToSave.forEach((lead) => {
                 const leadRef = doc(db, 'prospect_leads', lead.id);
-                batch.set(leadRef, lead, { merge: true });
+                batch.set(leadRef, sanitizeForFirestore(lead), { merge: true });
             });
             await batch.commit();
 
@@ -1086,7 +1097,8 @@ export default function AdminDashboardScreen() {
                 criticalReason: !cleanPhone ? 'Sin número de WhatsApp verificado' : undefined
             };
 
-            await setDoc(doc(db, 'prospect_leads', leadId), updated, { merge: true });
+            const sanitizedData = sanitizeForFirestore(updated);
+            await setDoc(doc(db, 'prospect_leads', leadId), sanitizedData, { merge: true });
 
             setProspects(prev => {
                 if (isNew) {
