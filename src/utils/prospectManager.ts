@@ -213,8 +213,8 @@ export const renderWhatsAppMessage = (
         baseUrl?: string;
     }
 ): string => {
-    // Si no se especifica baseUrl o estamos en localhost, usar SIEMPRE la URL pública oficial de producción de Vercel
-    const defaultPublicUrl = 'https://tuspedidos-mu.vercel.app';
+    // URL pública oficial de producción de Vercel del proyecto TusPedidos
+    const defaultPublicUrl = 'https://tuspedidos-web.vercel.app';
     let origin = params.baseUrl;
 
     if (!origin) {
