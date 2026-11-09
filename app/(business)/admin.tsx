@@ -2,7 +2,7 @@ import { router } from 'expo-router';
 import { collection, addDoc } from 'firebase/firestore';
 import { db } from '../../src/config/firebase';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Modal, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Modal, ActivityIndicator, useWindowDimensions, Linking } from 'react-native';
 import { useAppContext } from '../../src/context/AppContext';
 import { Order, OrderStatus } from '../../src/types';
 import { saveOrderToFirebase, createBroadcast, deleteOrderFromFirebase } from '../../src/services/businessService';
@@ -636,7 +636,7 @@ TOTAL: $${order.totalPrice.toFixed(2)}${orderPricing.hasCashDiscount ? `\nTOTAL 
 };
 
 export default function BusinessDashboardScreen() {
-    const { orders, setOrders, businessProfile, settings, isLoadingOrders, isSyncingFuture, isSyncingPast, syncFutureOrders, syncPastOrders, loadBusinessById } = useAppContext();
+    const { orders, setOrders, businessProfile, settings, isLoadingOrders, isSyncingFuture, isSyncingPast, syncFutureOrders, syncPastOrders, loadBusinessById, user } = useAppContext();
     const { width } = useWindowDimensions();
     const isMobile = width < 768;
     const [mobileExpandedSection, setMobileExpandedSection] = useState<'deliveries' | 'pickups' | null>('deliveries');
@@ -971,28 +971,6 @@ export default function BusinessDashboardScreen() {
 
     return (
         <View style={styles.container}>
-            {businessProfile?.status === 'trial' && (
-                <View style={{ backgroundColor: '#fffbeb', borderBottomWidth: 1, borderBottomColor: '#fde68a', paddingVertical: 10, paddingHorizontal: isMobile ? 14 : 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10 }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: isMobile ? '100%' : 260 }}>
-                        <FontAwesome name="lock" size={16} color="#d97706" />
-                        <Text style={{ color: '#92400e', fontSize: 13, flex: 1 }}>
-                            <Text style={{ fontWeight: 'bold' }}>Tarifa congelada a ${(businessProfile.planPrice || 9000).toLocaleString()}/mes</Text> durante tus 7 días de prueba.
-                        </Text>
-                    </View>
-                    <Pressable 
-                        style={{ backgroundColor: '#10b981', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: isMobile ? 'flex-start' : 'center' }}
-                        onPress={() => {
-                            const wspMsg = encodeURIComponent(`Hola! Quiero asegurar mi tarifa congelada de $${(businessProfile.planPrice || 9000).toLocaleString()}/mes para mi negocio ${businessProfile.name || ''} (ID: ${businessProfile.id}).`);
-                            if (Platform.OS === 'web' && typeof window !== 'undefined') {
-                                window.open(`https://wa.me/5493512345678?text=${wspMsg}`, '_blank');
-                            }
-                        }}
-                    >
-                        <FontAwesome name="whatsapp" size={14} color="#fff" />
-                        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 12 }}>Asegurar mi Precio</Text>
-                    </Pressable>
-                </View>
-            )}
             <View style={[styles.headerArea, isMobile && { flexDirection: 'column', alignItems: 'flex-start', paddingHorizontal: 16, paddingTop: 18, paddingBottom: 10, gap: 10 }]}>
                 <View>
                     <Text style={styles.title}>Panel de Preparación</Text>
@@ -1000,24 +978,30 @@ export default function BusinessDashboardScreen() {
                         <Text style={{fontWeight: 'bold', color: '#111'}}>{displayOrders.length}</Text> pedidos ({pickups.length} Retiro / {deliveries.length} Envío)
                     </Text>
                 </View>
-                <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', width: isMobile ? '100%' : 'auto' }}>
                     <Pressable 
-                        style={[styles.trendsBtn, { backgroundColor: '#ea580c' }]} 
+                        style={[styles.trendsBtn, { backgroundColor: '#ea580c', flex: isMobile ? 1 : undefined, paddingHorizontal: 6, paddingVertical: 10, alignItems: 'center', justifyContent: 'center' }]} 
                         onPress={() => setShowCreateOrderModal(true)}
                     >
-                        <Text style={[styles.trendsBtnText, { color: '#fff' }]}>➕ Crear Pedido</Text>
+                        <Text style={[styles.trendsBtnText, { color: '#fff', fontSize: isMobile ? 11 : 12 }]} numberOfLines={1}>➕ {isMobile ? 'Pedido' : 'Crear Pedido'}</Text>
                     </Pressable>
-                    <Pressable style={[styles.trendsBtn, { backgroundColor: '#10b981' }]} onPress={() => {
-                        if (!IS_DEDICATED_APP) {
-                            setShowChatbotUpsell(true);
-                        } else {
-                            setViewMode('chatbot');
-                        }
-                    }}>
-                        <Text style={[styles.trendsBtnText, { color: '#fff' }]}>🤖 Pedidos Chatbot</Text>
+                    <Pressable 
+                        style={[styles.trendsBtn, { backgroundColor: '#10b981', flex: isMobile ? 1 : undefined, paddingHorizontal: 6, paddingVertical: 10, alignItems: 'center', justifyContent: 'center' }]} 
+                        onPress={() => {
+                            if (!IS_DEDICATED_APP) {
+                                setShowChatbotUpsell(true);
+                            } else {
+                                setViewMode('chatbot');
+                            }
+                        }}
+                    >
+                        <Text style={[styles.trendsBtnText, { color: '#fff', fontSize: isMobile ? 11 : 12 }]} numberOfLines={1}>🤖 Chatbot</Text>
                     </Pressable>
-                    <Pressable style={styles.trendsBtn} onPress={() => setViewMode('trends')}>
-                        <Text style={styles.trendsBtnText}>📊 Tendencias</Text>
+                    <Pressable 
+                        style={[styles.trendsBtn, { flex: isMobile ? 1 : undefined, paddingHorizontal: 6, paddingVertical: 10, alignItems: 'center', justifyContent: 'center' }]} 
+                        onPress={() => setViewMode('trends')}
+                    >
+                        <Text style={[styles.trendsBtnText, { fontSize: isMobile ? 11 : 12 }]} numberOfLines={1}>📊 Tendencias</Text>
                     </Pressable>
                 </View>
             </View>
@@ -1340,62 +1324,40 @@ export default function BusinessDashboardScreen() {
             
             <Modal visible={showChatbotUpsell} transparent animationType="slide">
                 <View style={styles.modalOverlay}>
-                    <View style={[styles.modalBox, { width: '100%', maxWidth: 400 }]}>
-                        <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 10, textAlign: 'center' }}>🤖 Asistente Chatbot</Text>
-                        <Text style={{ color: '#475569', marginBottom: 20, textAlign: 'center', lineHeight: 22 }}>
-                            Un chatbot es un asistente automático de Whatsapp/Instagram/Facebook que toma los pedidos a través de mensajes. Si querés uno para tu negocio, tenés que solicitarlo. ¿Querés pedirlo?
+                    <View style={[styles.modalBox, { width: '100%', maxWidth: 420, padding: 24, borderRadius: 16 }]}>
+                        <Text style={{ fontSize: 20, fontWeight: 'bold', marginBottom: 12, textAlign: 'center' }}>🤖 Asistente Chatbot</Text>
+                        <Text style={{ color: '#475569', marginBottom: 24, textAlign: 'center', lineHeight: 22, fontSize: 14 }}>
+                            Un chatbot es un asistente automático de WhatsApp/Instagram/Facebook que toma los pedidos a través de mensajes para tu negocio. Podés solicitar tu presupuesto personalizado ahora mismo.
                         </Text>
                         
-                        <Text style={{ fontWeight: 'bold', marginBottom: 5 }}>Tu Nombre</Text>
-                        <TextInput 
-                            style={{ backgroundColor: '#f1f5f9', padding: 12, borderRadius: 8, marginBottom: 15, borderWidth: 1, borderColor: '#e2e8f0' }} 
-                            placeholder="Ej: Juan Pérez" 
-                            value={chatbotForm.name}
-                            onChangeText={t => setChatbotForm({ ...chatbotForm, name: t })}
-                        />
-                        
-                        <Text style={{ fontWeight: 'bold', marginBottom: 5 }}>Tu Teléfono (WhatsApp)</Text>
-                        <TextInput 
-                            style={{ backgroundColor: '#f1f5f9', padding: 12, borderRadius: 8, marginBottom: 20, borderWidth: 1, borderColor: '#e2e8f0' }} 
-                            placeholder="Ej: +54 9 11 1234-5678" 
-                            keyboardType="phone-pad"
-                            value={chatbotForm.phone}
-                            onChangeText={t => setChatbotForm({ ...chatbotForm, phone: t })}
-                        />
-                        
                         <Pressable 
-                            style={{ backgroundColor: '#10b981', padding: 15, borderRadius: 10, alignItems: 'center', marginBottom: 10 }} 
-                            disabled={isSubmittingChatbot}
-                            onPress={async () => {
-                                if (!chatbotForm.name || !chatbotForm.phone) {
-                                    alert('Por favor completá tu nombre y teléfono.');
-                                    return;
+                            style={{ backgroundColor: '#10b981', padding: 15, borderRadius: 12, alignItems: 'center', marginBottom: 10, flexDirection: 'row', justifyContent: 'center', gap: 8 }} 
+                            onPress={() => {
+                                const wspMsg = encodeURIComponent(`Hola! Quiero solicitar presupuesto para el Asistente Chatbot para mi negocio ${businessProfile?.name || ''} (ID: ${businessProfile?.id || ''}).`);
+                                if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                                    window.open(`https://wa.me/5491154193128?text=${wspMsg}`, '_blank');
+                                } else {
+                                    Linking.openURL(`https://wa.me/5491154193128?text=${wspMsg}`);
                                 }
-                                setIsSubmittingChatbot(true);
                                 try {
-                                    await addDoc(collection(db, 'admin_requests'), {
+                                    addDoc(collection(db, 'admin_requests'), {
                                         businessId: businessProfile.id,
                                         businessName: businessProfile.name,
-                                        ownerEmail: 'N/A',
-                                        ownerName: chatbotForm.name,
-                                        ownerPhone: chatbotForm.phone,
+                                        ownerEmail: user?.email || 'N/A',
+                                        ownerName: businessProfile.name || 'Demo User',
+                                        ownerPhone: 'N/A',
                                         requestType: 'chatbot',
                                         createdAt: new Date().toISOString(),
                                         status: 'pending'
-                                    });
-                                    alert('¡Solicitud enviada! Nos pondremos en contacto con vos a la brevedad.');
-                                    setShowChatbotUpsell(false);
-                                } catch(e) {
-                                    console.error(e);
-                                    alert('Hubo un error al enviar la solicitud.');
-                                } finally {
-                                    setIsSubmittingChatbot(false);
-                                }
+                                    }).catch(() => {});
+                                } catch(e) {}
+                                setShowChatbotUpsell(false);
                             }}
                         >
-                            {isSubmittingChatbot ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: 'bold' }}>Sí, quiero solicitarlo</Text>}
+                            <FontAwesome name="whatsapp" size={18} color="#fff" />
+                            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>Solicitar Presupuesto</Text>
                         </Pressable>
-                        <Pressable style={{ padding: 15, alignItems: 'center' }} onPress={() => setShowChatbotUpsell(false)}>
+                        <Pressable style={{ padding: 12, alignItems: 'center' }} onPress={() => setShowChatbotUpsell(false)}>
                             <Text style={{ color: '#64748b', fontWeight: 'bold' }}>No por ahora</Text>
                         </Pressable>
                     </View>

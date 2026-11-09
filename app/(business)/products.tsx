@@ -815,7 +815,7 @@ export default function BusinessProductsScreen() {
             list = list.filter(p => p.name.toLowerCase().includes(low) || p.category.toLowerCase().includes(low));
         }
         if (filterStockMode) {
-            list = list.filter(p => !p.available);
+            list = list.filter(p => p.available === false);
         }
         if (filterOffersMode) {
             list = list.filter(p => p.isOfferActive);
@@ -857,7 +857,7 @@ export default function BusinessProductsScreen() {
 
     const draftFilteredProducts = useMemo(() => {
         let result = draftMyProducts;
-        if (filterStockMode) result = result.filter(p => !p.available);
+        if (filterStockMode) result = result.filter(p => p.available === false);
         if (filterOffersMode) result = result.filter(p => offers.some(o => o.active && o.requirements?.some(r => r.productId === p.id)));
         if (filterQuery) {
             const lower = filterQuery.toLowerCase();
@@ -1877,8 +1877,8 @@ export default function BusinessProductsScreen() {
                                         <View key={product.id} style={[
                                             styles.row,
                                             selectedIds.has(product.id) && { backgroundColor: '#FFF5F5' },
-                                            !product.available && { backgroundColor: '#FEF2F2', borderLeftWidth: 4, borderLeftColor: '#EF4444' },
-                                            (hasPromo && product.available && !selectedIds.has(product.id)) && { backgroundColor: '#FEF9C3' }
+                                            product.available === false && { backgroundColor: '#FEF2F2', borderLeftWidth: 4, borderLeftColor: '#EF4444' },
+                                            (hasPromo && product.available !== false && !selectedIds.has(product.id)) && { backgroundColor: '#FEF9C3' }
                                         ]}>
                                             <View style={{ width: 40, alignItems: 'center', justifyContent: 'center' }}>
                                                 <Pressable onPress={() => toggleSelection(product.id)} style={{ padding: 10 }}>
@@ -1980,7 +1980,7 @@ export default function BusinessProductsScreen() {
                                                     </View>
                                                 </>
                                             )}
-                                            {!product.available ? (
+                                            {product.available === false ? (
                                                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, gap: 10 }}>
                                                     <Pressable
                                                         style={{
@@ -2109,7 +2109,7 @@ export default function BusinessProductsScreen() {
                                                     <View style={[styles.cell, { width: 60, alignItems: 'center' }]}>
                                                         <Switch
                                                             style={{ transform: Platform.OS === 'web' ? 'scale(0.8)' : [{ scaleX: 0.8 }, { scaleY: 0.8 }] } as any}
-                                                            value={product.available}
+                                                            value={(product.available as any) !== false}
                                                             onValueChange={(val) => {
                                                                 if (!val) {
                                                                     openRestockModalForProduct(product.id, 'deactivate');

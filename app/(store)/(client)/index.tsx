@@ -1,7 +1,7 @@
 import { FontAwesome } from '@expo/vector-icons';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useLocalSearchParams, Redirect, router } from 'expo-router';
-import { Alert, FlatList, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Modal } from 'react-native';
+import { Alert, FlatList, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Modal, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../../../src/config/firebase';
 import { doc, setDoc } from 'firebase/firestore';
@@ -204,14 +204,27 @@ const CarouselWithArrows = ({ children, style }: any) => {
 };
 
 export default function ClientShopScreen() {
-    const { user, orders, products, offers, cart, setCart, settings, businessProfile, setActiveCouponCode, isLoading, guestOrderIds, favorites, toggleFavorite, flashOfferState, setFlashOfferState } = useAppContext();
+    const { user, orders, products, offers, cart, setCart, settings, businessProfile, setActiveCouponCode, isLoading, loadBusinessById, guestOrderIds, favorites, toggleFavorite, flashOfferState, setFlashOfferState } = useAppContext();
     const params = useLocalSearchParams();
     const promo = params.promo as string;
     
-    // Redirect to welcome if Universal App and no business loaded
+    const storeParam = (params.store as string) || (Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('store') : null);
+
+    useEffect(() => {
+        if (storeParam && businessProfile?.id !== storeParam.toLowerCase().trim()) {
+            loadBusinessById(storeParam.toLowerCase().trim()).catch(() => {});
+        }
+    }, [storeParam, businessProfile?.id]);
+
+    // Redirect to welcome if Universal App and no business loaded and no store param in URL
     if (!IS_DEDICATED_APP && (!businessProfile || !businessProfile.id || businessProfile.id === 'default')) {
-        if (params.store) {
-            return <Redirect href={`/welcome?store=${params.store}`} />;
+        if (storeParam) {
+            return (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' }}>
+                    <ActivityIndicator size="large" color="#10b981" />
+                    <Text style={{ color: '#64748b', fontSize: 16, marginTop: 12 }}>Cargando tienda...</Text>
+                </View>
+            );
         }
         return <Redirect href="/welcome" />;
     }

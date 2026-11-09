@@ -128,6 +128,7 @@ const createProd = (businessId: string, name: string, category: string, price: n
         category,
         price,
         unitType,
+        available: true,
         isVisible: true,
         inStock: true,
         createdAt: new Date().toISOString(),

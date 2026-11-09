@@ -23,7 +23,7 @@ export default function Index() {
             if (Platform.OS === 'web' && storeCodeParam) {
                 try {
                     await loadBusinessById(storeCodeParam.toLowerCase().trim());
-                    router.replace('/');
+                    router.replace(`/?store=${encodeURIComponent(storeCodeParam.toLowerCase().trim())}` as any);
                 } catch (e) {
                     setError('No se pudo encontrar el comercio asociado a este enlace.');
                     setIsInitializingApp(false);
@@ -72,7 +72,8 @@ export default function Index() {
         }
 
         // If already logged in as business, redirect to admin directly
-        if (user?.role === 'business') {
+        const urlStore = storeCodeParam || (Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('store') : null);
+        if (user?.role === 'business' && !urlStore) {
             return <Redirect href="/(business)/admin" />;
         }
 

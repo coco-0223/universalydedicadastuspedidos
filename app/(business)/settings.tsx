@@ -346,6 +346,30 @@ export default function BusinessSettingsScreen() {
         setExpandedBranches(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
     };
 
+    const [copiedLink, setCopiedLink] = useState(false);
+
+    const handleCopyLink = async () => {
+        try {
+            if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+                await navigator.clipboard.writeText(shareUrl);
+            } else if (typeof document !== 'undefined') {
+                const textArea = document.createElement('textarea');
+                textArea.value = shareUrl;
+                textArea.style.position = 'fixed';
+                textArea.style.opacity = '0';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textArea);
+            }
+        } catch (e) {
+            console.warn('Clipboard copy error:', e);
+        }
+        setCopiedLink(true);
+        setTimeout(() => setCopiedLink(false), 2500);
+    };
+
     const dayNames = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
     const shareUrl = Platform.OS === 'web' ? `${window.location.origin}/?store=${businessProfile.id}` : `https://tuspedidos-listapp.vercel.app/?store=${businessProfile.id}`;
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(shareUrl)}`;
@@ -356,6 +380,28 @@ export default function BusinessSettingsScreen() {
     return (
         <View style={styles.container}>
             <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+                {businessProfile?.status === 'trial' && (
+                    <View style={{ backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fde68a', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 10, marginBottom: 20 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, minWidth: 240 }}>
+                            <FontAwesome name="lock" size={16} color="#d97706" />
+                            <Text style={{ color: '#92400e', fontSize: 13, flex: 1 }}>
+                                <Text style={{ fontWeight: 'bold' }}>Tarifa congelada a ${(businessProfile.planPrice || 9000).toLocaleString()}/mes</Text> durante tus 7 días de prueba.
+                            </Text>
+                        </View>
+                        <Pressable 
+                            style={{ backgroundColor: '#10b981', paddingHorizontal: 14, paddingVertical: 8, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 6 }}
+                            onPress={() => {
+                                const wspMsg = encodeURIComponent("Hola! Quiero asegurar mi tarifa congelada de $" + (businessProfile.planPrice || 9000).toLocaleString() + "/mes para mi negocio " + (businessProfile.name || "") + " (ID: " + businessProfile.id + ").");
+                                if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                                    window.open("https://wa.me/5491154193128?text=" + wspMsg, '_blank');
+                                }
+                            }}
+                        >
+                            <FontAwesome name="whatsapp" size={15} color="#fff" />
+                            <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>Asegurar mi Precio</Text>
+                        </Pressable>
+                    </View>
+                )}
                 <View style={styles.header}>
                     <Text style={styles.title}>Centro de Control de Negocio</Text>
                 </View>
@@ -375,8 +421,8 @@ export default function BusinessSettingsScreen() {
                         <View style={styles.linkContainer}>
                             <Text style={styles.linkSub}>TU LINK DIRECTO (WEBAPP):</Text>
                             <TextInput style={styles.linkInput} value={shareUrl} editable={false} />
-                            <Pressable style={styles.copyBtn} onPress={() => { if(Platform.OS==='web') navigator.clipboard.writeText(shareUrl); Alert.alert('Copiado', 'Link copiado.'); }}>
-                                <Text style={styles.copyBtnText}>📋 Copiar Link</Text>
+                            <Pressable style={[styles.copyBtn, copiedLink && { backgroundColor: '#10b981' }]} onPress={handleCopyLink}>
+                                <Text style={styles.copyBtnText}>{copiedLink ? '✅ ¡Copiado!' : '📋 Copiar Link'}</Text>
                             </Pressable>
                         </View>
 

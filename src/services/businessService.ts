@@ -74,14 +74,24 @@ export const fetchBusinessData = async (businessId: string, userRole?: string, u
             
             if (catalogSnap.exists()) {
                 const catalogData = catalogSnap.data();
-                products = catalogData.products || [];
+                const rawProducts = catalogData.products || [];
+                products = rawProducts.map((p: any) => ({
+                    ...p,
+                    available: p.available !== undefined ? p.available : (p.inStock !== false)
+                }));
                 offers = catalogData.offers || [];
                 console.log(`[Firestore Read] fetchBusinessData: Catálogo ÚNICO descargado (1 lectura para TODO).`);
             } else {
                 // Fallback de migración: leer subcolecciones antiguas
                 console.log(`[Firestore Read] fetchBusinessData: No se encontró catálogo único. Fallback a subcolecciones...`);
                 const productsSnap = await getDocs(collection(db, `businesses/${actualBusinessId}/products`));
-                products = productsSnap.docs.map(doc => doc.data() as Product);
+                products = productsSnap.docs.map(doc => {
+                    const p = doc.data() as any;
+                    return {
+                        ...p,
+                        available: p.available !== undefined ? p.available : (p.inStock !== false)
+                    };
+                });
                 
                 const offersSnap = await getDocs(collection(db, `businesses/${actualBusinessId}/offers`));
                 offers = offersSnap.docs.map(doc => doc.data() as Offer);
