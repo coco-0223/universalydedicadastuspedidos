@@ -4,6 +4,7 @@ import { useAppContext } from '../../src/context/AppContext';
 import { Branch, Coupon, Milestone, MilestoneGroup, Raffle } from '../../src/types';
 import { saveBusinessSettings } from '../../src/services/businessService';
 import { FontAwesome } from '@expo/vector-icons';
+import { getOrGenerateAccessPin } from '../../src/utils/prospectManager';
 import { collection, addDoc } from 'firebase/firestore';
 import { db, auth } from '../../src/config/firebase';
 import { IS_DEDICATED_APP } from '../../src/data/mockData';
@@ -347,6 +348,7 @@ export default function BusinessSettingsScreen() {
     };
 
     const [copiedLink, setCopiedLink] = useState(false);
+    const [copiedPin, setCopiedPin] = useState(false);
 
     const handleCopyLink = async () => {
         try {
@@ -424,6 +426,35 @@ export default function BusinessSettingsScreen() {
                             <Pressable style={[styles.copyBtn, copiedLink && { backgroundColor: '#10b981' }]} onPress={handleCopyLink}>
                                 <Text style={styles.copyBtnText}>{copiedLink ? '✅ ¡Copiado!' : '📋 Copiar Link'}</Text>
                             </Pressable>
+                        </View>
+
+                        <View style={{ backgroundColor: '#f0f9ff', padding: 12, borderRadius: 8, borderWidth: 1, borderColor: '#bae6fd', marginTop: 12 }}>
+                            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#0369a1', textTransform: 'uppercase' }}>
+                                🔑 Clave de Acceso de esta Demo:
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 6 }}>
+                                <Text style={{ fontSize: 18, fontWeight: '800', color: '#0284c7', letterSpacing: 2 }}>
+                                    {getOrGenerateAccessPin(businessProfile?.id)}
+                                </Text>
+                                <Pressable
+                                    style={{ backgroundColor: copiedPin ? '#10b981' : '#0284c7', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6 }}
+                                    onPress={() => {
+                                        const pin = getOrGenerateAccessPin(businessProfile?.id);
+                                        if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+                                            navigator.clipboard.writeText(pin);
+                                            setCopiedPin(true);
+                                            setTimeout(() => setCopiedPin(false), 2500);
+                                        }
+                                    }}
+                                >
+                                    <Text style={{ color: '#fff', fontSize: 12, fontWeight: 'bold' }}>
+                                        {copiedPin ? '✅ ¡Copiada!' : '📋 Copiar Clave'}
+                                    </Text>
+                                </Pressable>
+                            </View>
+                            <Text style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+                                Con esta clave de 6 caracteres podés reingresar a la demo desde cualquier dispositivo nuevo.
+                            </Text>
                         </View>
 
                         <View style={{ height: 1, backgroundColor: '#e2e8f0', marginVertical: 15 }} />

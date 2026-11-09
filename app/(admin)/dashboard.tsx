@@ -15,7 +15,8 @@ import {
     nameToSlug,
     cleanBusinessNameForComparison,
     renderWhatsAppMessage,
-    downloadProspectExcelFile
+    downloadProspectExcelFile,
+    getOrGenerateAccessPin
 } from '../../src/utils/prospectManager';
 
 interface BusinessRowData {
@@ -32,6 +33,7 @@ interface BusinessRowData {
     status?: 'active' | 'trial';
     trialExpiresAt?: string;
     planPrice?: number;
+    accessPin?: string;
 }
 
 interface BlockedAttempt {
@@ -316,7 +318,8 @@ export default function AdminDashboardScreen() {
                     isActive: bData.isActive !== false,
                     status: bData.profile?.status || 'active',
                     trialExpiresAt: bData.profile?.trialExpiresAt,
-                    planPrice: bData.profile?.planPrice || 9000
+                    planPrice: bData.profile?.planPrice || 9000,
+                    accessPin: bData.accessPin || profile.accessPin || getOrGenerateAccessPin(bId)
                 });
             }));
 
@@ -1868,6 +1871,23 @@ export default function AdminDashboardScreen() {
                                                         <Text style={{ fontSize: 11, color: '#e2e8f0', fontWeight: '600' }}>👤 {lead.contactName}</Text>
                                                     )}
                                                     <Text style={styles.tdBusinessId}>slug: {lead.id}</Text>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                                                        <View style={{ backgroundColor: '#0369a133', borderWidth: 1, borderColor: '#0284c7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                                            <Text style={{ fontSize: 11, color: '#38bdf8', fontWeight: 'bold' }}>🔑 Clave: {getOrGenerateAccessPin(lead.id, lead.accessPin)}</Text>
+                                                        </View>
+                                                        <Pressable
+                                                            onPress={() => {
+                                                                const pin = getOrGenerateAccessPin(lead.id, lead.accessPin);
+                                                                if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+                                                                    navigator.clipboard.writeText(pin);
+                                                                    alert('Clave copiada: ' + pin);
+                                                                }
+                                                            }}
+                                                            style={{ padding: 3, backgroundColor: '#1e293b', borderRadius: 4 }}
+                                                        >
+                                                            <FontAwesome name="copy" size={11} color="#94a3b8" />
+                                                        </Pressable>
+                                                    </View>
                                                     {(lead.zone || lead.province) && (
                                                         <Text style={{ fontSize: 10, color: '#38bdf8', marginTop: 2 }}>
                                                             📍 {[lead.zone, lead.province, lead.country].filter(Boolean).join(', ')}
@@ -2160,6 +2180,23 @@ export default function AdminDashboardScreen() {
                                     <View style={{ flex: 2, minWidth: 160 }}>
                                         <Text style={styles.tdBusinessName}>{b.name}</Text>
                                         <Text style={styles.tdBusinessId}>slug: {b.id}</Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                                            <View style={{ backgroundColor: '#0369a133', borderWidth: 1, borderColor: '#0284c7', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                                <Text style={{ fontSize: 11, color: '#38bdf8', fontWeight: 'bold' }}>🔑 Clave: {b.accessPin || getOrGenerateAccessPin(b.id)}</Text>
+                                            </View>
+                                            <Pressable
+                                                onPress={() => {
+                                                    const pin = b.accessPin || getOrGenerateAccessPin(b.id);
+                                                    if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.clipboard) {
+                                                        navigator.clipboard.writeText(pin);
+                                                        alert('Clave copiada: ' + pin);
+                                                    }
+                                                }}
+                                                style={{ padding: 3, backgroundColor: '#1e293b', borderRadius: 4 }}
+                                            >
+                                                <FontAwesome name="copy" size={11} color="#94a3b8" />
+                                            </Pressable>
+                                        </View>
                                         {b.status === 'trial' ? (
                                             <View style={{ marginTop: 4 }}>
                                                 {b.trialExpiresAt && new Date(b.trialExpiresAt).getTime() > Date.now() ? (
