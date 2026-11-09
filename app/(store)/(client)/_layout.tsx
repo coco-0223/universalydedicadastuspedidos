@@ -111,9 +111,11 @@ export default function ClientLayout() {
         }
         
         let cashUnitPrice = unitPrice;
-        if (item.product.isDailyOffer && item.product.dailyOfferMinQty && item.product.dailyOfferPrice) {
-            if (item.quantity >= item.product.dailyOfferMinQty) {
-                cashUnitPrice = item.product.dailyOfferPrice / item.product.dailyOfferMinQty;
+        if (item.product.isDailyOffer && item.product.dailyOfferPrice) {
+            const rawMinQty = item.product.dailyOfferMinQty !== undefined ? Number(item.product.dailyOfferMinQty) : 0;
+            const minQty = isNaN(rawMinQty) ? 0 : rawMinQty;
+            if (minQty <= 0 || item.quantity >= minQty) {
+                cashUnitPrice = minQty > 1 ? (item.product.dailyOfferPrice / minQty) : item.product.dailyOfferPrice;
             }
         }
         cashTotal += cashUnitPrice * item.quantity;

@@ -1,7 +1,7 @@
 import { FontAwesome } from '@expo/vector-icons';
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useLocalSearchParams, Redirect, router } from 'expo-router';
-import { Alert, FlatList, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Modal, ActivityIndicator } from 'react-native';
+import { Alert, FlatList, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, Modal } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db } from '../../../src/config/firebase';
 import { doc, setDoc } from 'firebase/firestore';
@@ -204,27 +204,14 @@ const CarouselWithArrows = ({ children, style }: any) => {
 };
 
 export default function ClientShopScreen() {
-    const { user, orders, products, offers, cart, setCart, settings, businessProfile, setActiveCouponCode, isLoading, loadBusinessById, guestOrderIds, favorites, toggleFavorite, flashOfferState, setFlashOfferState } = useAppContext();
+    const { user, orders, products, offers, cart, setCart, settings, businessProfile, setActiveCouponCode, isLoading, guestOrderIds, favorites, toggleFavorite, flashOfferState, setFlashOfferState } = useAppContext();
     const params = useLocalSearchParams();
     const promo = params.promo as string;
     
-    const storeParam = (params.store as string) || (Platform.OS === 'web' && typeof window !== 'undefined' ? new URLSearchParams(window.location.search).get('store') : null);
-
-    useEffect(() => {
-        if (storeParam && businessProfile?.id !== storeParam.toLowerCase().trim()) {
-            loadBusinessById(storeParam.toLowerCase().trim()).catch(() => {});
-        }
-    }, [storeParam, businessProfile?.id]);
-
-    // Redirect to welcome if Universal App and no business loaded and no store param in URL
+    // Redirect to welcome if Universal App and no business loaded
     if (!IS_DEDICATED_APP && (!businessProfile || !businessProfile.id || businessProfile.id === 'default')) {
-        if (storeParam) {
-            return (
-                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#f8fafc' }}>
-                    <ActivityIndicator size="large" color="#10b981" />
-                    <Text style={{ color: '#64748b', fontSize: 16, marginTop: 12 }}>Cargando tienda...</Text>
-                </View>
-            );
+        if (params.store) {
+            return <Redirect href={`/welcome?store=${params.store}`} />;
         }
         return <Redirect href="/welcome" />;
     }
@@ -863,11 +850,18 @@ export default function ClientShopScreen() {
                                         <Text style={styles.foodProductPrice}>
                                             {hidePrices ? (restrictionData.reopensAt ? `Volvé a mirar nuestros precios a las ${restrictionData.reopensAt} hs` : '') : `${settings?.currency || '$'}${basePrice} (Hoy)`}
                                         </Text>
-                                        {item.baseProduct.isDailyOffer && item.baseProduct.dailyOfferPrice && !hidePrices && (
-                                            <Text style={{ fontSize: 11, color: '#dc2626', fontWeight: 'bold', marginTop: 2 }}>
-                                                💵 Efectivo (mín. ${item.baseProduct.dailyOfferMinQty || 1}${item.baseProduct.unitType === "unit" ? "u" : "kg"}): ${item.baseProduct.dailyOfferPrice} | 💳 Otros: ${basePrice * (item.baseProduct.dailyOfferMinQty || 1)}
-                                            </Text>
-                                        )}
+                                        {item.baseProduct.isDailyOffer && item.baseProduct.dailyOfferPrice && !hidePrices && (() => {
+                                            const rawMinQty = item.baseProduct.dailyOfferMinQty !== undefined ? Number(item.baseProduct.dailyOfferMinQty) : 0;
+                                            const minQty = isNaN(rawMinQty) ? 0 : rawMinQty;
+                                            const unitLabel = item.baseProduct.unitType === "unit" ? "u" : "kg";
+                                            const multiplier = minQty > 0 ? minQty : 1;
+                                            const minText = minQty > 0 ? ` (mín. ${minQty}${unitLabel})` : '';
+                                            return (
+                                                <Text style={{ fontSize: 11, color: '#dc2626', fontWeight: 'bold', marginTop: 2 }}>
+                                                    💵 Efectivo{minText}: ${item.baseProduct.dailyOfferPrice} | 💳 Otros: ${basePrice * multiplier}
+                                                </Text>
+                                            );
+                                        })()}
                                         {item.baseProduct.advancePrice !== undefined && item.baseProduct.advancePrice > 0 && !hidePrices && (
                                             <Text style={{ fontSize: 11, color: '#10b981', fontWeight: 'bold', marginTop: 1 }}>
                                                 {settings?.currency || '$'}{item.baseProduct.advancePrice} (Anticipado)
@@ -943,11 +937,18 @@ export default function ClientShopScreen() {
                                     </Text>
                                 )
                             ))}
-                            {item.baseProduct.isDailyOffer && !hidePrices && (
-                                <Text style={[styles.literalListPrice, { color: '#d97706', fontSize: 12, fontStyle: 'italic', fontWeight: 'bold' }]}>
-                                    💵 Efectivo (mín. ${item.baseProduct.dailyOfferMinQty || 1}${item.baseProduct.unitType === "unit" ? "u" : "kg"}): ${item.baseProduct.dailyOfferPrice} | 💳 Otros: ${basePrice * (item.baseProduct.dailyOfferMinQty || 1)}
-                                </Text>
-                            )}
+                            {item.baseProduct.isDailyOffer && !hidePrices && (() => {
+                                const rawMinQty = item.baseProduct.dailyOfferMinQty !== undefined ? Number(item.baseProduct.dailyOfferMinQty) : 0;
+                                const minQty = isNaN(rawMinQty) ? 0 : rawMinQty;
+                                const unitLabel = item.baseProduct.unitType === "unit" ? "u" : "kg";
+                                const multiplier = minQty > 0 ? minQty : 1;
+                                const minText = minQty > 0 ? ` (mín. ${minQty}${unitLabel})` : '';
+                                return (
+                                    <Text style={[styles.literalListPrice, { color: '#d97706', fontSize: 12, fontStyle: 'italic', fontWeight: 'bold' }]}>
+                                        💵 Efectivo{minText}: ${item.baseProduct.dailyOfferPrice} | 💳 Otros: ${basePrice * multiplier}
+                                    </Text>
+                                );
+                            })()}
                         </View>
                     </View>
                     {!item.baseProduct.available || (availableStock !== null && availableStock <= 0) ? (
@@ -990,11 +991,18 @@ export default function ClientShopScreen() {
                             <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 10 }}>⚡ OFERTA FLASH</Text>
                         </View>
                     )}
-                    {item.baseProduct.isDailyOffer && !hidePrices && (
-                        <View style={{ backgroundColor: '#fef3c7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start', marginBottom: 5, borderWidth: 1, borderColor: '#f59e0b' }}>
-                            <Text style={{ color: '#d97706', fontWeight: 'bold', fontSize: 10 }}>💵 EFECTIVO (MÍN. ${item.baseProduct.dailyOfferMinQty || 1}${item.baseProduct.unitType === "unit" ? "U" : "KG"}): ${item.baseProduct.dailyOfferPrice} | 💳 OTROS: ${basePrice * (item.baseProduct.dailyOfferMinQty || 1)}</Text>
-                        </View>
-                    )}
+                    {item.baseProduct.isDailyOffer && !hidePrices && (() => {
+                        const rawMinQty = item.baseProduct.dailyOfferMinQty !== undefined ? Number(item.baseProduct.dailyOfferMinQty) : 0;
+                        const minQty = isNaN(rawMinQty) ? 0 : rawMinQty;
+                        const unitLabel = item.baseProduct.unitType === "unit" ? "U" : "KG";
+                        const multiplier = minQty > 0 ? minQty : 1;
+                        const minText = minQty > 0 ? ` (MÍN. ${minQty}${unitLabel})` : '';
+                        return (
+                            <View style={{ backgroundColor: '#fef3c7', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, alignSelf: 'flex-start', marginBottom: 5, borderWidth: 1, borderColor: '#f59e0b' }}>
+                                <Text style={{ color: '#d97706', fontWeight: 'bold', fontSize: 10 }}>💵 EFECTIVO{minText}: ${item.baseProduct.dailyOfferPrice} | 💳 OTROS: ${basePrice * multiplier}</Text>
+                            </View>
+                        );
+                    })()}
                     {item.isOffer && !item.specialActive && !item.baseProduct.isDailyOffer && <Text style={[styles.offerBadge, { backgroundColor: businessProfile.primaryColor }]}>¡EN OFERTA!</Text>}
                     {item.featured && !item.isOffer && !item.specialActive && !item.baseProduct.isDailyOffer && <Text style={styles.featuredBadge}>Destacado</Text>}
 
@@ -1057,19 +1065,26 @@ export default function ClientShopScreen() {
                                         ))}
                                     </View>
                                 )}
-                                {item.baseProduct.isDailyOffer && !hidePrices && (
-                                    <View style={{ backgroundColor: "#fef3c7", padding: 6, borderRadius: 6, borderWidth: 1, borderColor: "#f59e0b" }}>
-                                        <Text style={{ color: "#d97706", fontSize: 12, fontWeight: "bold" }}>
-                                            💵 PRECIO EFECTIVO (Mín. {item.baseProduct.dailyOfferMinQty || 1}{item.baseProduct.unitType === "unit" ? "u." : "kg"})
-                                        </Text>
-                                        <Text style={{ color: "#d97706", fontSize: 13, fontWeight: "bold" }}>
-                                            {settings?.currency || "$"}{item.baseProduct.dailyOfferPrice}
-                                        </Text>
-                                        <Text style={{ color: "#d97706", fontSize: 11, marginTop: 2 }}>
-                                            (💳 Otros medios: {settings?.currency || "$"}{basePrice * (item.baseProduct.dailyOfferMinQty || 1)})
-                                        </Text>
-                                    </View>
-                                )}
+                                {item.baseProduct.isDailyOffer && !hidePrices && (() => {
+                                    const rawMinQty = item.baseProduct.dailyOfferMinQty !== undefined ? Number(item.baseProduct.dailyOfferMinQty) : 0;
+                                    const minQty = isNaN(rawMinQty) ? 0 : rawMinQty;
+                                    const unitLabel = item.baseProduct.unitType === "unit" ? "u." : "kg";
+                                    const multiplier = minQty > 0 ? minQty : 1;
+                                    const minText = minQty > 0 ? ` (Mín. ${minQty}${unitLabel})` : '';
+                                    return (
+                                        <View style={{ backgroundColor: "#fef3c7", padding: 6, borderRadius: 6, borderWidth: 1, borderColor: "#f59e0b" }}>
+                                            <Text style={{ color: "#d97706", fontSize: 12, fontWeight: "bold" }}>
+                                                💵 PRECIO EFECTIVO{minText}
+                                            </Text>
+                                            <Text style={{ color: "#d97706", fontSize: 13, fontWeight: "bold" }}>
+                                                {settings?.currency || "$"}{item.baseProduct.dailyOfferPrice}
+                                            </Text>
+                                            <Text style={{ color: "#d97706", fontSize: 11, marginTop: 2 }}>
+                                                (💳 Otros medios: {settings?.currency || "$"}{basePrice * multiplier})
+                                            </Text>
+                                        </View>
+                                    );
+                                })()}
                             </View>
                             <View style={styles.singlePriceRow}>
                             <View>

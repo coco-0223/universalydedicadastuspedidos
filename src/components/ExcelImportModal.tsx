@@ -33,6 +33,27 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     const [rawRows, setRawRows] = useState<any[][]>([]);
     const [searchQueries, setSearchQueries] = useState<Record<number, string>>({});
 
+    const resetModal = () => {
+        setStep('upload');
+        setLoading(false);
+        setParsedItems([]);
+        setResolutions([]);
+        setFileName('');
+        setRawRows([]);
+        setSearchQueries({});
+    };
+
+    React.useEffect(() => {
+        if (!visible) {
+            resetModal();
+        }
+    }, [visible]);
+
+    const handleClose = () => {
+        resetModal();
+        onClose();
+    };
+
     const handleFileSelect = (event: any) => {
         const file = event.target?.files?.[0];
         if (!file) return;
@@ -98,11 +119,15 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
                     const matched = existingProducts.find(p => checkMatch(p, true)) || existingProducts.find(p => checkMatch(p, false));
 
+                    const initialMinQty = matched?.dailyOfferMinQty !== undefined 
+                        ? matched.dailyOfferMinQty 
+                        : (item.dailyOfferMinQty !== undefined ? item.dailyOfferMinQty : 0);
+
                     return {
                         item,
                         action: matched ? matched.id : 'create',
                         unitType: matched?.unitType || item.unitType || 'kg',
-                        minQty: item.dailyOfferMinQty || matched?.dailyOfferMinQty || 1,
+                        minQty: initialMinQty,
                         approxWeight: matched?.approxWeight
                     };
                 });
@@ -135,7 +160,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
             if (target) {
                 if (target.unitType) updated[index].unitType = target.unitType;
                 if (target.approxWeight) updated[index].approxWeight = target.approxWeight;
-                if (target.dailyOfferMinQty && target.dailyOfferMinQty > 1) updated[index].minQty = target.dailyOfferMinQty;
+                if (target.dailyOfferMinQty !== undefined) updated[index].minQty = target.dailyOfferMinQty;
             }
         }
         setResolutions(updated);
@@ -149,7 +174,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
     const handleMinQtyChange = (index: number, newQty: number) => {
         const updated = [...resolutions];
-        updated[index].minQty = Math.max(1, newQty);
+        updated[index].minQty = Math.max(0, newQty);
         setResolutions(updated);
     };
 
@@ -185,7 +210,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                     approxWeight: unitType === 'unit' ? approxWeight : undefined,
                     isDailyOffer: item.isDailyOffer || false,
                     dailyOfferPrice: item.dailyOfferPrice || item.price,
-                    dailyOfferMinQty: minQty || item.dailyOfferMinQty || 1
+                    dailyOfferMinQty: minQty !== undefined ? minQty : 0
                 } as Product;
                 (newProd as any).isRecentlyImported = true;
                 nextProducts.push(newProd);
@@ -211,10 +236,10 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                     if (item.isDailyOffer) {
                         current.isDailyOffer = true;
                         current.dailyOfferPrice = item.price;
-                        current.dailyOfferMinQty = minQty || item.dailyOfferMinQty || 1;
+                        current.dailyOfferMinQty = minQty !== undefined ? minQty : 0;
                     } else {
                         current.price = item.price;
-                        if (minQty > 1) {
+                        if (minQty > 0) {
                             current.dailyOfferMinQty = minQty;
                         }
                     }
@@ -223,7 +248,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
         });
 
         onApplyImport(nextProducts, updatedAliases, rawRows);
-        onClose();
+        handleClose();
     };
 
     const sortedExistingProducts = [...existingProducts].sort((a, b) => a.name.localeCompare(b.name));
@@ -234,7 +259,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                 <View style={styles.container}>
                     <View style={styles.header}>
                         <Text style={styles.title}>📥 Importación Inteligente de Excel</Text>
-                        <Pressable onPress={onClose} style={styles.closeBtn}>
+                        <Pressable onPress={handleClose} style={styles.closeBtn}>
                             <Text style={styles.closeBtnText}>✕</Text>
                         </Pressable>
                     </View>
@@ -318,7 +343,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                                                         .filter(p => !searchQueries[idx] || p.name.toLowerCase().includes(searchQueries[idx].toLowerCase()))
                                                         .map(p => (
                                                         <option key={p.id} value={p.id}>
-                                                            {p.name} ({p.category}) [Actual en tienda: ${p.price}]
+                                                            {p.name} ({p.category}) ➔ Nuevo: ${res.item.price}{res.item.isDailyOffer ? ' (Efectivo)' : ''}
                                                         </option>
                                                     ))}
                                                 </optgroup>
@@ -341,9 +366,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                                                     <Text style={{ fontSize: 12, fontWeight: 'bold', color: '#374151' }}>Mínimo Oferta:</Text>
                                                     <input
                                                         type="number"
-                                                        min="1"
-                                                        value={res.minQty || 1}
-                                                        onChange={(e) => handleMinQtyChange(idx, parseInt(e.target.value, 10) || 1)}
+                                                        min="0"
+                                                        value={res.minQty !== undefined ? res.minQty : 0}
+                                                        onChange={(e) => handleMinQtyChange(idx, e.target.value === '' ? 0 : (parseInt(e.target.value, 10) || 0))}
                                                         style={{ width: 50, padding: 4, borderRadius: 6, borderColor: '#d1d5db', borderWidth: 1, fontSize: 12, textAlign: 'center' } as any}
                                                     />
                                                     <Text style={{ fontSize: 12, color: '#6b7280' }}>{res.unitType === 'unit' ? 'u.' : 'kg'}</Text>

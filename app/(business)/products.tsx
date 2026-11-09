@@ -3,7 +3,7 @@ import { IS_DEDICATED_APP } from '../../src/data/mockData';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
 import { ImagePickerPortal } from '../../src/components/ImagePickerPortal';
 import { ExcelImportModal } from '../../src/components/ExcelImportModal';
 import { SuperadminRawExcelEditor } from '../../src/components/SuperadminRawExcelEditor';
@@ -14,11 +14,6 @@ import { CrossSellRule, MixAndMatchRule, Offer, Product } from '../../src/types'
 
 export default function BusinessProductsScreen() {
     const { products, setProducts, settings, setSettings, offers, setOffers, businessProfile, user } = useAppContext();
-    const { width } = useWindowDimensions();
-    const isMobile = width < 768;
-    const [showExtraActions, setShowExtraActions] = useState(false);
-    const [showFiltersExpanded, setShowFiltersExpanded] = useState(false);
-
     const myProducts = useMemo(() => products.filter(p => !p.businessId || p.businessId === businessProfile.id), [products, businessProfile.id]);
     const myOffers = useMemo(() => offers.filter(o => !o.businessId || o.businessId === businessProfile.id), [offers, businessProfile.id]);
     const [drafts, setDrafts] = useState<Partial<Product>[]>([{ id: Date.now().toString(), name: '', category: settings.categories?.[0] || 'Varios', price: 0, imageUrl: '', available: true, description: '' }]);
@@ -277,6 +272,13 @@ export default function BusinessProductsScreen() {
 
     const [newCatName, setNewCatName] = useState('');
     const [newCatColor, setNewCatColor] = useState('#007AFF');
+    const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const showToast = (msg: string) => {
+        setToastMessage(msg);
+        setTimeout(() => {
+            setToastMessage(null);
+        }, 4500);
+    };
 
     // Restock Modal States
     const [isRestockModalOpen, setIsRestockModalOpen] = useState(false);
@@ -575,10 +577,10 @@ export default function BusinessProductsScreen() {
             return;
         }
         const price = parseFloat(dailyOfferDraft.price.replace(',', '.'));
-        const qty = parseInt(dailyOfferDraft.minQty);
+        const qty = dailyOfferDraft.minQty === '' ? 0 : parseInt(dailyOfferDraft.minQty, 10);
         
-        if (isNaN(price) || price <= 0 || isNaN(qty) || qty <= 0) {
-            Alert.alert('Error', 'Precio y cantidad deben ser válidos y mayores a 0.');
+        if (isNaN(price) || price <= 0 || isNaN(qty) || qty < 0) {
+            Alert.alert('Error', 'Precio debe ser mayor a 0 y cantidad mínima debe ser 0 o superior.');
             return;
         }
 
@@ -816,7 +818,7 @@ export default function BusinessProductsScreen() {
             list = list.filter(p => p.name.toLowerCase().includes(low) || p.category.toLowerCase().includes(low));
         }
         if (filterStockMode) {
-            list = list.filter(p => p.available === false);
+            list = list.filter(p => !p.available);
         }
         if (filterOffersMode) {
             list = list.filter(p => p.isOfferActive);
@@ -858,7 +860,7 @@ export default function BusinessProductsScreen() {
 
     const draftFilteredProducts = useMemo(() => {
         let result = draftMyProducts;
-        if (filterStockMode) result = result.filter(p => p.available === false);
+        if (filterStockMode) result = result.filter(p => !p.available);
         if (filterOffersMode) result = result.filter(p => offers.some(o => o.active && o.requirements?.some(r => r.productId === p.id)));
         if (filterQuery) {
             const lower = filterQuery.toLowerCase();
@@ -1545,190 +1547,74 @@ export default function BusinessProductsScreen() {
     return (
         <View style={{ flex: 1 }}>
             <ScrollView style={styles.container}>
-                <View style={[styles.content, isMobile && { padding: 12, paddingBottom: 100 }]}>
+                <View style={styles.content}>
                     <Text style={styles.pageTitle}>Panel de Control: Inventario Web</Text>
                     <Text style={styles.subtitle}>Añade y edita múltiples productos en simultáneo.</Text>
 
-                    <View style={[styles.section, isMobile && { padding: 14 }]}>
-                        {isMobile ? (
-                            <View style={{ gap: 10 }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                    <Text style={[styles.sectionTitle, { fontSize: 18, marginRight: 0 }]}>Acciones Rápidas</Text>
-                                    <Pressable 
-                                        style={{ backgroundColor: '#f3f4f6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8 }} 
-                                        onPress={() => setIsHelpOpen(true)}
-                                    >
-                                        <Text style={{ fontSize: 12, color: '#4b5563', fontWeight: 'bold' }}>❔ Ayuda</Text>
-                                    </Pressable>
-                                </View>
+                    <View style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
+                            <Pressable style={[styles.addBtn, { backgroundColor: '#007AFF', marginRight: 10 }]} onPress={() => setIsDraftsModalOpen(true)}>
+                                <Text style={styles.btnText}>+ Añadir Nuevo Producto</Text>
+                            </Pressable>
+                            <Pressable style={[styles.addBtn, { backgroundColor: '#eab308', marginRight: 10 }]} onPress={openSpecialsPricing}>
+                                <Text style={styles.btnText}>⚡ Especiales</Text>
+                            </Pressable>
+                            <Pressable style={[styles.addBtn, { backgroundColor: '#d97706', marginRight: 10 }]} onPress={openDailyOffers}>
+                                <Text style={styles.btnText}>🔥 Ofertas del Día</Text>
+                            </Pressable>
+                            
+                            {!IS_DEDICATED_APP && (
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#10b981', marginRight: 10 }]} onPress={exportPriceListToExcel}>
+                                    <Text style={styles.btnText}>⬇️ Exportar Plantilla Excel</Text>
+                                </Pressable>
+                            )}
+                            <Pressable style={[styles.addBtn, { backgroundColor: '#dc2626', marginRight: 10 }]} onPress={() => setIsSmartExcelModalOpen(true)}>
 
-                                {/* Botón principal destacado */}
-                                <Pressable 
-                                    style={[styles.addBtn, { backgroundColor: '#007AFF', paddingVertical: 12, alignItems: 'center', justifyContent: 'center' }]} 
-                                    onPress={() => setIsDraftsModalOpen(true)}
-                                >
-                                    <Text style={[styles.btnText, { fontSize: 14 }]}>+ Añadir Nuevo Producto</Text>
+                                <Text style={styles.btnText}>📥 Subir Excel Inteligente</Text>
+                            </Pressable>
+                            {user?.email === 'cocobustos.93@gmail.com' && settings.rawExcelGrid && (
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#3b82f6', marginRight: 10 }]} onPress={() => setIsSuperadminRawExcelOpen(true)}>
+                                    <Text style={styles.btnText}>Ver Excel Original</Text>
                                 </Pressable>
-
-                                {/* Botón acordeón para el resto de herramientas */}
-                                <Pressable 
-                                    style={{ 
-                                        flexDirection: 'row', 
-                                        alignItems: 'center', 
-                                        justifyContent: 'center', 
-                                        gap: 8, 
-                                        paddingVertical: 10, 
-                                        paddingHorizontal: 12, 
-                                        borderRadius: 8, 
-                                        backgroundColor: showExtraActions ? '#f1f5f9' : '#f8fafc',
-                                        borderWidth: 1,
-                                        borderColor: '#e2e8f0'
-                                    }}
-                                    onPress={() => setShowExtraActions(!showExtraActions)}
-                                >
-                                    <FontAwesome name={showExtraActions ? "chevron-up" : "chevron-down"} size={13} color="#475569" />
-                                    <Text style={{ fontSize: 13, fontWeight: '700', color: '#334155' }}>
-                                        {showExtraActions ? 'Ocultar Herramientas' : 'Más Herramientas (Combos, Excel, Especiales...)'}
-                                    </Text>
-                                </Pressable>
-
-                                {showExtraActions && (
-                                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4 }}>
-                                        <Pressable style={[styles.addBtn, { backgroundColor: '#eab308', flex: 1, minWidth: '45%' }]} onPress={openSpecialsPricing}>
-                                            <Text style={styles.btnText}>⚡ Especiales</Text>
-                                        </Pressable>
-                                        <Pressable style={[styles.addBtn, { backgroundColor: '#d97706', flex: 1, minWidth: '45%' }]} onPress={openDailyOffers}>
-                                            <Text style={styles.btnText}>🔥 Ofertas del Día</Text>
-                                        </Pressable>
-                                        <Pressable style={[styles.addBtn, { backgroundColor: '#8a2be2', flex: 1, minWidth: '45%' }]} onPress={() => { setComboView('list'); setIsComboModalOpen(true); }}>
-                                            <Text style={styles.btnText}>🎁 Combos</Text>
-                                        </Pressable>
-                                        <Pressable style={[styles.addBtn, { backgroundColor: '#10b981', flex: 1, minWidth: '45%' }]} onPress={() => {
-                                            setExcelOrderIds(filteredProducts.map(p => p.id));
-                                            setIsExcelEditorOpen(true);
-                                        }}>
-                                            <Text style={styles.btnText}>✏️ Editar Múltiples</Text>
-                                        </Pressable>
-                                        <Pressable style={[styles.addBtn, { backgroundColor: '#dc2626', flex: 1, minWidth: '45%' }]} onPress={() => setIsSmartExcelModalOpen(true)}>
-                                            <Text style={styles.btnText}>📥 Subir Excel</Text>
-                                        </Pressable>
-                                        {!IS_DEDICATED_APP && (
-                                            <Pressable style={[styles.addBtn, { backgroundColor: '#059669', flex: 1, minWidth: '45%' }]} onPress={exportPriceListToExcel}>
-                                                <Text style={styles.btnText}>⬇️ Bajar Plantilla</Text>
-                                            </Pressable>
-                                        )}
-                                        <Pressable style={[styles.addBtn, { backgroundColor: '#FF9500', flex: 1, minWidth: '45%' }]} onPress={() => setIsPasteModalOpen(true)}>
-                                            <Text style={styles.btnText}>📋 Pegar Excel</Text>
-                                        </Pressable>
-                                        <Pressable style={[styles.addBtn, { backgroundColor: '#f59e0b', flex: 1, minWidth: '45%' }]} onPress={openVolumePricing}>
-                                            <Text style={styles.btnText}>📦 Por Volumen</Text>
-                                        </Pressable>
-                                        <Pressable style={[styles.addBtn, { backgroundColor: '#4b5563', flex: 1, minWidth: '45%' }]} onPress={() => setIsHistoryModalOpen(true)}>
-                                            <Text style={styles.btnText}>📜 Historial {catalogHistory.length > 0 ? `(${catalogHistory.length})` : ''}</Text>
-                                        </Pressable>
-                                        {user?.email === 'cocobustos.93@gmail.com' && settings.rawExcelGrid && (
-                                            <Pressable style={[styles.addBtn, { backgroundColor: '#3b82f6', width: '100%' }]} onPress={() => setIsSuperadminRawExcelOpen(true)}>
-                                                <Text style={styles.btnText}>Ver Excel Original</Text>
-                                            </Pressable>
-                                        )}
-                                    </View>
-                                )}
-                            </View>
-                        ) : (
-                            <View style={styles.sectionHeader}>
-                                <Text style={styles.sectionTitle}>Acciones Rápidas</Text>
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#007AFF', marginRight: 10 }]} onPress={() => setIsDraftsModalOpen(true)}>
-                                    <Text style={styles.btnText}>+ Añadir Nuevo Producto</Text>
-                                </Pressable>
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#eab308', marginRight: 10 }]} onPress={openSpecialsPricing}>
-                                    <Text style={styles.btnText}>⚡ Especiales</Text>
-                                </Pressable>
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#d97706', marginRight: 10 }]} onPress={openDailyOffers}>
-                                    <Text style={styles.btnText}>🔥 Ofertas del Día</Text>
-                                </Pressable>
-                                
-                                {!IS_DEDICATED_APP && (
-                                    <Pressable style={[styles.addBtn, { backgroundColor: '#10b981', marginRight: 10 }]} onPress={exportPriceListToExcel}>
-                                        <Text style={styles.btnText}>⬇️ Exportar Plantilla Excel</Text>
-                                    </Pressable>
-                                )}
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#dc2626', marginRight: 10 }]} onPress={() => setIsSmartExcelModalOpen(true)}>
-
-                                    <Text style={styles.btnText}>📥 Subir Excel Inteligente</Text>
-                                </Pressable>
-                                {user?.email === 'cocobustos.93@gmail.com' && settings.rawExcelGrid && (
-                                    <Pressable style={[styles.addBtn, { backgroundColor: '#3b82f6', marginRight: 10 }]} onPress={() => setIsSuperadminRawExcelOpen(true)}>
-                                        <Text style={styles.btnText}>Ver Excel Original</Text>
-                                    </Pressable>
-                                )}
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#4b5563', marginRight: 10 }]} onPress={() => setIsHistoryModalOpen(true)}>
-                                    <Text style={styles.btnText}>📜 Historial de Cambios {catalogHistory.length > 0 ? `(${catalogHistory.length})` : ''}</Text>
-                                </Pressable>
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#FF9500', marginRight: 10 }]} onPress={() => setIsPasteModalOpen(true)}>
-                                    <Text style={styles.btnText}>📋 Pegar desde Excel</Text>
-                                </Pressable>
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#8a2be2' }]} onPress={() => { setComboView('list'); setIsComboModalOpen(true); }}>
-                                    <Text style={styles.btnText}>🎁 Gestionar Combos</Text>
-                                </Pressable>
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#10b981', marginLeft: 10 }]} onPress={() => {
-                                    setExcelOrderIds(filteredProducts.map(p => p.id));
-                                    setIsExcelEditorOpen(true);
-                                }}>
-                                    <Text style={styles.btnText}>✏️ Editar Múltiples</Text>
-                                </Pressable>
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#f59e0b', marginLeft: 10 }]} onPress={openVolumePricing}>
-                                    <Text style={styles.btnText}>📦 Precio por volumen</Text>
-                                </Pressable>
-                                <Pressable style={[styles.addBtn, { backgroundColor: '#E5E5EA', marginLeft: 'auto' }]} onPress={() => setIsHelpOpen(true)}>
-                                    <Text style={[styles.btnText, { color: '#333' }]}>❔ Ayuda</Text>
-                                </Pressable>
-                            </View>
-                        )}
+                            )}
+                            <Pressable style={[styles.addBtn, { backgroundColor: '#4b5563', marginRight: 10 }]} onPress={() => setIsHistoryModalOpen(true)}>
+                                <Text style={styles.btnText}>📜 Historial de Cambios {catalogHistory.length > 0 ? `(${catalogHistory.length})` : ''}</Text>
+                            </Pressable>
+                            <Pressable style={[styles.addBtn, { backgroundColor: '#FF9500', marginRight: 10 }]} onPress={() => setIsPasteModalOpen(true)}>
+                                <Text style={styles.btnText}>📋 Pegar desde Excel</Text>
+                            </Pressable>
+                            <Pressable style={[styles.addBtn, { backgroundColor: '#8a2be2' }]} onPress={() => { setComboView('list'); setIsComboModalOpen(true); }}>
+                                <Text style={styles.btnText}>🎁 Gestionar Combos</Text>
+                            </Pressable>
+                            <Pressable style={[styles.addBtn, { backgroundColor: '#10b981', marginLeft: 10 }]} onPress={() => {
+                                setExcelOrderIds(filteredProducts.map(p => p.id));
+                                setIsExcelEditorOpen(true);
+                            }}>
+                                <Text style={styles.btnText}>✏️ Editar Múltiples</Text>
+                            </Pressable>
+                            <Pressable style={[styles.addBtn, { backgroundColor: '#f59e0b', marginLeft: 10 }]} onPress={openVolumePricing}>
+                                <Text style={styles.btnText}>📦 Precio por volumen</Text>
+                            </Pressable>
+                            <Pressable style={[styles.addBtn, { backgroundColor: '#E5E5EA', marginLeft: 'auto' }]} onPress={() => setIsHelpOpen(true)}>
+                                <Text style={[styles.btnText, { color: '#333' }]}>❔ Ayuda</Text>
+                            </Pressable>
+                        </View>
                     </View>
 
-                    <View style={[styles.section, { marginTop: 40 }, isMobile && { padding: 14 }]}>
-                        <View style={[styles.sectionHeader, isMobile && { flexDirection: 'column', alignItems: 'stretch', gap: 10 }]}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                <Text style={styles.sectionTitle}>Catálogo Actual</Text>
-                                {selectedIds.size > 0 && (
-                                    <Pressable style={[styles.addBtn, { backgroundColor: '#FF3B30' }]} onPress={deleteSelected}>
-                                        <Text style={styles.btnText}>Eliminar {selectedIds.size}</Text>
-                                    </Pressable>
-                                )}
-                            </View>
-                            <TextInput style={[styles.searchInput, isMobile && { minWidth: '100%' }]} placeholder="Buscar por Nombre o Categoría..." value={filterQuery} onChangeText={setFilterQuery} />
+                    <View style={[styles.section, { marginTop: 40 }]}>
+                        <View style={styles.sectionHeader}>
+                            <Text style={styles.sectionTitle}>Catálogo Actual</Text>
+                            <TextInput style={styles.searchInput} placeholder="Buscar por Nombre o Categoría..." value={filterQuery} onChangeText={setFilterQuery} />
+                            {selectedIds.size > 0 && (
+                                <Pressable style={[styles.addBtn, { backgroundColor: '#FF3B30', marginLeft: 15 }]} onPress={deleteSelected}>
+                                    <Text style={styles.btnText}>Eliminar {selectedIds.size} seleccionados</Text>
+                                </Pressable>
+                            )}
                         </View>
 
-                        {isMobile && (
-                            <Pressable
-                                onPress={() => setShowFiltersExpanded(!showFiltersExpanded)}
-                                style={{
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    backgroundColor: showFiltersExpanded ? '#eff6ff' : '#f8fafc',
-                                    borderWidth: 1,
-                                    borderColor: showFiltersExpanded ? '#3b82f6' : '#e2e8f0',
-                                    paddingVertical: 10,
-                                    paddingHorizontal: 14,
-                                    borderRadius: 8,
-                                    marginTop: 10,
-                                    marginBottom: 14,
-                                }}
-                            >
-                                <Text style={{ fontWeight: '600', color: showFiltersExpanded ? '#1d4ed8' : '#475569', fontSize: 13 }}>
-                                    {showFiltersExpanded ? '▲ Ocultar Filtros y Vistas' : '▼ Filtrar por Categoría y Vista'}
-                                </Text>
-                                <Text style={{ fontSize: 12, color: '#64748b' }}>
-                                    {filterQuery ? '(' + filterQuery + ')' : ''}
-                                </Text>
-                            </Pressable>
-                        )}
-
-                        {(!isMobile || showFiltersExpanded) && (
-                            <>
-{/* TABS DE VISTA (Scrollable en mobile) */}
-                        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexDirection: 'row', gap: 10, paddingBottom: 10 }} style={{ marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#eee' }}>
+                        {/* TABS DE VISTA */}
+                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20, borderBottomWidth: 1, borderBottomColor: '#eee', paddingBottom: 10 }}>
                             {[
                                 { id: 'all', label: 'Todos los Productos', color: '#007AFF', icon: '📋' },
                                 { id: 'volume', label: 'Por Volumen', color: '#10b981', icon: '📦' },
@@ -1758,7 +1644,7 @@ export default function BusinessProductsScreen() {
                                     </Pressable>
                                 );
                             })}
-                        </ScrollView>
+                        </View>
 
                         <View style={styles.sectionHeader}>
                             <View style={{ width: '100%', flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
@@ -1828,347 +1714,8 @@ export default function BusinessProductsScreen() {
                                 </View>
                             </View>
                         )}
-                            </>
-                        )}
-{isMobile ? (
-                            <View style={{ width: '100%', paddingBottom: 60 }}>
-                                {visibleOffers.map(offer => {
-                                    let originalPrice = (offer.requirements || []).reduce((sum: number, req: any) => {
-                                        const p = myProducts.find(prod => prod.id === req.productId);
-                                        return sum + (p ? p.price * req.quantity : 0);
-                                    }, 0);
-                                    const liveRaw = activePromos[offer.id] ?? (offer.bundlePrice || 0).toString();
-                                    const liveCalc = activePromos[offer.id] !== undefined ? parseFloat(liveRaw) || 0 : (offer.bundlePrice || 0);
-
-                                    return (
-                                        <View
-                                            key={'mobile-offer-' + offer.id}
-                                            style={{
-                                                backgroundColor: '#fff7ed',
-                                                borderRadius: 14,
-                                                borderWidth: 1.5,
-                                                borderColor: '#fed7aa',
-                                                padding: 14,
-                                                marginBottom: 12,
-                                                shadowColor: '#000',
-                                                shadowOffset: { width: 0, height: 2 },
-                                                shadowOpacity: 0.05,
-                                                shadowRadius: 3,
-                                                elevation: 2
-                                            }}
-                                        >
-                                            {/* Header: Icon, Name, Special, Delete */}
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                                                    <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#ffedd5', alignItems: 'center', justifyContent: 'center' }}>
-                                                        <Text style={{ fontSize: 20 }}>🎁</Text>
-                                                    </View>
-                                                    <View style={{ flex: 1 }}>
-                                                        <TextInput
-                                                            style={{ fontSize: 16, fontWeight: 'bold', color: '#1f2937', paddingVertical: 2 }}
-                                                            value={offer.name}
-                                                            onChangeText={(val) => updateOfferField(offer.id, 'name', val)}
-                                                            placeholder="Nombre del Combo"
-                                                        />
-                                                        <Text style={{ fontSize: 12, color: '#9a3412', fontStyle: 'italic' }}>Combo Especial</Text>
-                                                    </View>
-                                                </View>
-                                                <Pressable
-                                                    onPress={() => setOffers(offers.filter(o => o.id !== offer.id))}
-                                                    style={{ padding: 6 }}
-                                                >
-                                                    <FontAwesome name="times" size={16} color="#ef4444" />
-                                                </Pressable>
-                                            </View>
-
-                                            {/* Precios: Orig, Promo, Descuento */}
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 6, paddingVertical: 6, borderTopWidth: 1, borderTopColor: '#ffedd5', borderBottomWidth: 1, borderBottomColor: '#ffedd5' }}>
-                                                <View>
-                                                    <Text style={{ fontSize: 13, color: '#6b7280', textDecorationLine: 'line-through' }}>
-                                                        Orig: ${originalPrice.toFixed(0)}
-                                                    </Text>
-                                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                                                        <Text style={{ fontSize: 18, fontWeight: '800', color: '#111827' }}>$</Text>
-                                                        <TextInput
-                                                            style={{
-                                                                fontSize: 20,
-                                                                fontWeight: '800',
-                                                                color: '#111827',
-                                                                minWidth: 80,
-                                                                paddingVertical: 2,
-                                                                paddingHorizontal: 4,
-                                                                backgroundColor: '#fff',
-                                                                borderRadius: 6,
-                                                                borderWidth: 1,
-                                                                borderColor: '#fed7aa',
-                                                                marginLeft: 4
-                                                            }}
-                                                            value={liveRaw}
-                                                            onChangeText={(val) => setActivePromos({ ...activePromos, [offer.id]: val })}
-                                                            onEndEditing={() => {
-                                                                updateOfferField(offer.id, 'bundlePrice', parseFloat(liveRaw) || (offer.bundlePrice || 0));
-                                                                setActivePromos(prev => { const copy = { ...prev }; delete copy[offer.id]; return copy; });
-                                                            }}
-                                                            placeholder="$$$"
-                                                            keyboardType="numeric"
-                                                        />
-                                                    </View>
-                                                </View>
-                                                <View style={{ alignItems: 'flex-end' }}>
-                                                    <Text style={{ fontSize: 13, color: '#dc2626', fontWeight: 'bold' }}>
-                                                        {renderOfferCalc(originalPrice, liveCalc)}
-                                                    </Text>
-                                                </View>
-                                            </View>
-
-                                            {/* Footer: Editar Combo & Stock Switch */}
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
-                                                <Pressable
-                                                    style={{
-                                                        backgroundColor: '#007AFF',
-                                                        paddingHorizontal: 16,
-                                                        paddingVertical: 8,
-                                                        borderRadius: 8,
-                                                        alignItems: 'center'
-                                                    }}
-                                                    onPress={() => handleEditCombo(offer)}
-                                                >
-                                                    <Text style={{ color: '#fff', fontSize: 13, fontWeight: 'bold' }}>Editar Combo</Text>
-                                                </Pressable>
-
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#4b5563' }}>Stock</Text>
-                                                    <Switch
-                                                        value={offer.active}
-                                                        onValueChange={(val) => updateOfferField(offer.id, 'active', val)}
-                                                        trackColor={{ false: '#ccc', true: '#007AFF' }}
-                                                        thumbColor={'#fff'}
-                                                        {...({ activeThumbColor: '#fff' } as any)}
-                                                    />
-                                                </View>
-                                            </View>
-                                        </View>
-                                    );
-                                })}
-
-                                {filteredProducts.map(product => {
-                                    const liveRaw = activePromos[product.id] ?? product.promotionalPrice?.toString() ?? '';
-                                    const liveCalc = activePromos[product.id] !== undefined ? parsePromoStr(liveRaw, product.price) : product.promotionalPrice;
-
-                                    const isProductInCombo = offers.some(o => o.active && o.requirements?.some((r: any) => r.productId === product.id) && o.bundlePrice !== undefined);
-                                    const isProductSpecial = product.specialOffer?.active;
-                                    const isProductDaily = product.isDailyOffer;
-
-                                    const catColor = categoryColors[product.category] || '#3b82f6';
-
-                                    return (
-                                        <View
-                                            key={'mobile-prod-' + product.id}
-                                            style={{
-                                                backgroundColor: product.available === false ? '#fef2f2' : selectedIds.has(product.id) ? '#fff5f5' : '#ffffff',
-                                                borderRadius: 12,
-                                                borderWidth: 1,
-                                                borderColor: selectedIds.has(product.id) ? '#ef4444' : product.available === false ? '#fca5a5' : '#e5e7eb',
-                                                padding: 12,
-                                                marginBottom: 10,
-                                                shadowColor: '#000',
-                                                shadowOffset: { width: 0, height: 1 },
-                                                shadowOpacity: 0.05,
-                                                shadowRadius: 2,
-                                                elevation: 1
-                                            }}
-                                        >
-                                            {/* Row 1: Checkbox, Name, Category Pill, Edit Pencil */}
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                                <Pressable onPress={() => toggleSelection(product.id)} style={{ padding: 4 }}>
-                                                    {selectedIds.has(product.id) ? (
-                                                        <Text style={{ fontSize: 18, color: '#ef4444' }}>☑</Text>
-                                                    ) : (
-                                                        <Text style={{ fontSize: 18, color: '#cbd5e1' }}>☐</Text>
-                                                    )}
-                                                </Pressable>
-
-                                                <TextInput
-                                                    style={{
-                                                        fontSize: 16,
-                                                        fontWeight: '700',
-                                                        color: '#0f172a',
-                                                        flex: 1,
-                                                        paddingVertical: 2
-                                                    }}
-                                                    value={product.name}
-                                                    onChangeText={(val) => updateProduct(product.id, 'name', val)}
-                                                />
-
-                                                <View style={{
-                                                    flexDirection: 'row',
-                                                    alignItems: 'center',
-                                                    gap: 5,
-                                                    backgroundColor: catColor + '1A',
-                                                    paddingHorizontal: 8,
-                                                    paddingVertical: 3,
-                                                    borderRadius: 12,
-                                                    borderWidth: 1,
-                                                    borderColor: catColor + '40'
-                                                }}>
-                                                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: catColor }} />
-                                                    <Text style={{ fontSize: 11, fontWeight: '700', color: catColor }}>{product.category}</Text>
-                                                </View>
-
-                                                <Pressable
-                                                    style={{
-                                                        width: 34,
-                                                        height: 34,
-                                                        borderRadius: 8,
-                                                        backgroundColor: '#f0f9ff',
-                                                        borderWidth: 1,
-                                                        borderColor: '#bae6fd',
-                                                        alignItems: 'center',
-                                                        justifyContent: 'center'
-                                                    }}
-                                                    onPress={() => {
-                                                        setEditingProduct(product);
-                                                        setIsDetailModalOpen(true);
-                                                    }}
-                                                >
-                                                    <FontAwesome name="pencil" size={14} color="#0284c7" />
-                                                </Pressable>
-                                            </View>
-
-                                            {/* Row 2: Price / Unit & Stock Switch */}
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
-                                                <View style={{
-                                                    flexDirection: 'row',
-                                                    alignItems: 'center',
-                                                    backgroundColor: '#f8fafc',
-                                                    borderWidth: 1,
-                                                    borderColor: '#cbd5e1',
-                                                    borderRadius: 8,
-                                                    paddingHorizontal: 10,
-                                                    paddingVertical: 4,
-                                                    flex: 1,
-                                                    maxWidth: 190
-                                                }}>
-                                                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#334155', marginRight: 4 }}>$</Text>
-                                                    <TextInput
-                                                        style={{
-                                                            fontSize: 16,
-                                                            fontWeight: '700',
-                                                            color: '#0f172a',
-                                                            flex: 1,
-                                                            paddingVertical: 2
-                                                        }}
-                                                        value={product.price?.toString()}
-                                                        onChangeText={(val) => updateProduct(product.id, 'price', parseFloat(val) || 0)}
-                                                        keyboardType="numeric"
-                                                    />
-                                                    <Text style={{ fontSize: 12, color: '#64748b', marginLeft: 4 }}>
-                                                        / {product.unitType === 'unit' ? 'Unidad' : product.unitType === 'piece' ? 'Pieza' : 'Kilo'}
-                                                    </Text>
-                                                </View>
-
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                                                    <Text style={{ fontSize: 12, fontWeight: '600', color: product.available !== false ? '#15803d' : '#b91c1c' }}>
-                                                        {product.available !== false ? 'Stock' : 'Sin stock'}
-                                                    </Text>
-                                                    <Switch
-                                                        value={product.available !== false}
-                                                        onValueChange={(val) => {
-                                                            updateProduct(product.id, 'available', val);
-                                                            if (val) {
-                                                                updateProduct(product.id, 'restockDate', undefined);
-                                                                updateProduct(product.id, 'restockTime', undefined);
-                                                            }
-                                                        }}
-                                                        trackColor={{ false: '#fca5a5', true: '#86efac' }}
-                                                        thumbColor={product.available !== false ? '#16a34a' : '#dc2626'}
-                                                        {...({ activeThumbColor: '#16a34a' } as any)}
-                                                    />
-                                                </View>
-                                            </View>
-
-                                            {/* Row 3: Badges de Ofertas / Volumen si existen */}
-                                            {(isProductDaily || isProductSpecial || (product.bulkPricing?.length ?? 0) > 0 || offers.some(o => o.active && o.requirements?.some((r: any) => r.productId === product.id))) && (
-                                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-                                                    {isProductDaily && (
-                                                        <Pressable onPress={() => handleEditDailyOffer(product.id)} style={{ backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fcd34d', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                                                            <Text style={{ fontSize: 11, color: '#b45309', fontWeight: 'bold' }}>🔥 Día: ${product.dailyOfferPrice}</Text>
-                                                        </Pressable>
-                                                    )}
-                                                    {isProductSpecial && (
-                                                        <Pressable onPress={() => handleEditSpecial(product.id)} style={{ backgroundColor: '#fefce8', borderWidth: 1, borderColor: '#fde047', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                                                            <Text style={{ fontSize: 11, color: '#a16207', fontWeight: 'bold' }}>⚡ Especial: ${product.specialOffer?.price}</Text>
-                                                        </Pressable>
-                                                    )}
-                                                    {product.bulkPricing?.map((t: any, idx: number) => (
-                                                        <View key={idx} style={{ backgroundColor: '#e0f2fe', borderWidth: 1, borderColor: '#bae6fd', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                                                            <Text style={{ fontSize: 11, color: '#0369a1', fontWeight: 'bold' }}>📦 {t.quantity}+ a ${t.price} c/u</Text>
-                                                        </View>
-                                                    ))}
-                                                    {offers.filter(o => o.active && o.requirements?.some((r: any) => r.productId === product.id)).map(o => (
-                                                        <Pressable key={o.id} onPress={() => handleEditCombo(o)} style={{ backgroundColor: '#faf5ff', borderWidth: 1, borderColor: '#e9d5ff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                                                            <Text style={{ fontSize: 11, color: '#9333ea', fontWeight: 'bold' }}>🎁 Combo: ${o.bundlePrice}</Text>
-                                                        </Pressable>
-                                                    ))}
-                                                </View>
-                                            )}
-
-                                            {/* Row 4: Promo input & calc badge */}
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
-                                                <View style={{
-                                                    flexDirection: 'row',
-                                                    alignItems: 'center',
-                                                    backgroundColor: '#f1f5f9',
-                                                    borderWidth: 1,
-                                                    borderColor: '#cbd5e1',
-                                                    borderRadius: 6,
-                                                    paddingHorizontal: 8,
-                                                    paddingVertical: 2,
-                                                    flex: 1
-                                                }}>
-                                                    <TextInput
-                                                        style={{ fontSize: 13, color: '#334155', flex: 1, paddingVertical: 2 }}
-                                                        value={liveRaw}
-                                                        onChangeText={(val) => setActivePromos({ ...activePromos, [product.id]: val })}
-                                                        onEndEditing={() => {
-                                                            const finalVal = parsePromoStr(liveRaw, product.price);
-                                                            updateProduct(product.id, 'promotionalPrice', finalVal);
-                                                            setActivePromos(prev => { const copy = { ...prev }; delete copy[product.id]; return copy; });
-                                                        }}
-                                                        placeholder="Promo ($$$ o %)"
-                                                    />
-                                                </View>
-                                                <View style={{
-                                                    backgroundColor: '#f8fafc',
-                                                    borderWidth: 1,
-                                                    borderColor: '#e2e8f0',
-                                                    paddingHorizontal: 8,
-                                                    paddingVertical: 4,
-                                                    borderRadius: 6,
-                                                    minWidth: 50,
-                                                    alignItems: 'center'
-                                                }}>
-                                                    <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '600' }}>
-                                                        {liveCalc ? '$' + liveCalc : '-'}
-                                                    </Text>
-                                                </View>
-                                                {product.promotionalPrice ? (
-                                                    <Pressable
-                                                        onPress={() => updateProduct(product.id, 'promotionalPrice', undefined)}
-                                                        style={{ padding: 4 }}
-                                                    >
-                                                        <FontAwesome name="times" size={14} color="#94a3b8" />
-                                                    </Pressable>
-                                                ) : null}
-                                            </View>
-                                        </View>
-                                    );
-                                })}
-                            </View>
-                        ) : (
-<View style={{ width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={true} contentContainerStyle={{ flexGrow: 1 }} style={{ width: '100%', maxWidth: '100%' }}>
-                                <View style={{ minWidth: 1350, paddingBottom: 20 }}>
+\n<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ flexGrow: 1, justifyContent: 'center' }}>
+                            <View style={{ minWidth: 1350, paddingBottom: 20 }}>
                                 {renderHeaderRow(false)}
                                 {visibleOffers.map(offer => {
                                     let originalPrice = (offer.requirements || []).reduce((sum: number, req: any) => {
@@ -2244,8 +1791,8 @@ export default function BusinessProductsScreen() {
                                         <View key={product.id} style={[
                                             styles.row,
                                             selectedIds.has(product.id) && { backgroundColor: '#FFF5F5' },
-                                            product.available === false && { backgroundColor: '#FEF2F2', borderLeftWidth: 4, borderLeftColor: '#EF4444' },
-                                            (hasPromo && product.available !== false && !selectedIds.has(product.id)) && { backgroundColor: '#FEF9C3' }
+                                            !product.available && { backgroundColor: '#FEF2F2', borderLeftWidth: 4, borderLeftColor: '#EF4444' },
+                                            (hasPromo && product.available && !selectedIds.has(product.id)) && { backgroundColor: '#FEF9C3' }
                                         ]}>
                                             <View style={{ width: 40, alignItems: 'center', justifyContent: 'center' }}>
                                                 <Pressable onPress={() => toggleSelection(product.id)} style={{ padding: 10 }}>
@@ -2347,7 +1894,7 @@ export default function BusinessProductsScreen() {
                                                     </View>
                                                 </>
                                             )}
-                                            {product.available === false ? (
+                                            {!product.available ? (
                                                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, gap: 10 }}>
                                                     <Pressable
                                                         style={{
@@ -2476,7 +2023,7 @@ export default function BusinessProductsScreen() {
                                                     <View style={[styles.cell, { width: 60, alignItems: 'center' }]}>
                                                         <Switch
                                                             style={{ transform: Platform.OS === 'web' ? 'scale(0.8)' : [{ scaleX: 0.8 }, { scaleY: 0.8 }] } as any}
-                                                            value={(product.available as any) !== false}
+                                                            value={product.available}
                                                             onValueChange={(val) => {
                                                                 if (!val) {
                                                                     openRestockModalForProduct(product.id, 'deactivate');
@@ -2494,13 +2041,19 @@ export default function BusinessProductsScreen() {
                                                     </View>
                                                 </>
                                             )}
-                                            <View style={[styles.cell, { flex: 1, maxWidth: 80, alignItems: 'center', justifyContent: 'center' }]}>
+                                            <View style={[styles.cell, { flex: 2, maxWidth: 200 }]}>
                                                 <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
                                                     {product.imageUrl ? (
-                                                        <Image source={{ uri: product.imageUrl }} style={{ width: 28, height: 28, borderRadius: 4 }} />
+                                                        <Image source={{ uri: product.imageUrl }} style={{ width: 30, height: 30, borderRadius: 4 }} />
                                                     ) : null}
                                                     <Pressable
-                                                        style={{ padding: 8, backgroundColor: '#f0f9ff', borderRadius: 6, borderWidth: 1, borderColor: '#bae6fd', alignItems: 'center', justifyContent: 'center', width: 36, height: 36 }}
+                                                        style={{ padding: 8, backgroundColor: '#f0f0f0', borderRadius: 4, borderWidth: 1, borderColor: '#ddd', flex: 1, alignItems: 'center' }}
+                                                        onPress={() => setPickerState({ visible: true, type: 'product', id: product.id })}
+                                                    >
+                                                        <Text style={{ fontSize: 13, fontWeight: '500' }}>📷 {product.imageUrl ? 'Cambiar' : 'Subir'}</Text>
+                                                    </Pressable>
+                                                    <Pressable
+                                                        style={{ padding: 8, backgroundColor: '#f0f9ff', borderRadius: 4, borderWidth: 1, borderColor: '#bae6fd', alignItems: 'center', justifyContent: 'center', width: 36, height: 36 }}
                                                         onPress={() => {
                                                             setEditingProduct(product);
                                                             setIsDetailModalOpen(true);
@@ -2514,10 +2067,8 @@ export default function BusinessProductsScreen() {
                                         </View>
                                     );
                                 })}
-                                </View>
-                            </ScrollView>
-                        </View>
-                        )}
+                            </View>
+                        </ScrollView>
                     </View>
 
                     {/* SETTINGS (Categories and preferences) */}
@@ -2579,7 +2130,7 @@ export default function BusinessProductsScreen() {
 
                         <View style={{ flexDirection: 'row', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
                             {/* TARJETA 1 */}
-                            <View style={{ flex: 1, minWidth: isMobile ? '100%' : 320, backgroundColor: '#f9f9f9', padding: isMobile ? 15 : 25, borderRadius: 12, borderWidth: 1, borderColor: '#eee' }}>
+                            <View style={{ flex: 1, minWidth: 320, backgroundColor: '#f9f9f9', padding: 25, borderRadius: 12, borderWidth: 1, borderColor: '#eee' }}>
                                 <Text style={[styles.subtitle, { color: '#333', fontWeight: 'bold' }]}>Estilos del Catálogo de la App</Text>
 
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
@@ -2623,7 +2174,7 @@ export default function BusinessProductsScreen() {
                             </View>
 
                             {/* TARJETA 2 */}
-                            <View style={{ flex: 1, minWidth: isMobile ? '100%' : 320, backgroundColor: '#f9f9f9', padding: isMobile ? 15 : 25, borderRadius: 12, borderWidth: 1, borderColor: '#eee' }}>
+                            <View style={{ flex: 1, minWidth: 320, backgroundColor: '#f9f9f9', padding: 25, borderRadius: 12, borderWidth: 1, borderColor: '#eee' }}>
                                 <Text style={[styles.subtitle, { color: '#333', fontWeight: 'bold', marginBottom: 25 }]}>Modificadores de Carrito (Cantidades y Mínimos)</Text>
 
                                 <View style={{ gap: 25 }}>
@@ -2696,7 +2247,7 @@ export default function BusinessProductsScreen() {
                                 </View>
                             </View>
                             {/* TARJETA 3: Agenda */}
-                            <View style={{ flex: 1, minWidth: isMobile ? '100%' : 320, backgroundColor: '#f9f9f9', padding: isMobile ? 15 : 25, borderRadius: 12, borderWidth: 1, borderColor: '#eee' }}>
+                            <View style={{ flex: 1, minWidth: 320, backgroundColor: '#f9f9f9', padding: 25, borderRadius: 12, borderWidth: 1, borderColor: '#eee' }}>
                                 <Text style={[styles.subtitle, { color: '#333', fontWeight: 'bold', marginBottom: 25 }]}>Agenda y Horarios de Pedido</Text>
 
                                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -2743,7 +2294,7 @@ export default function BusinessProductsScreen() {
 
                             {/* TARJETA 4: Reglas Gastronómicas (Mix & Match / Cross-selling) */}
                             {settings.isFoodBusiness && (
-                                <View style={{ flex: 1, minWidth: isMobile ? '100%' : 320, backgroundColor: '#fdf2f8', padding: isMobile ? 15 : 25, borderRadius: 12, borderWidth: 1, borderColor: '#fbcfe8' }}>
+                                <View style={{ flex: 1, minWidth: 320, backgroundColor: '#fdf2f8', padding: 25, borderRadius: 12, borderWidth: 1, borderColor: '#fbcfe8' }}>
                                     <Text style={[styles.subtitle, { color: '#db2777', fontWeight: 'bold', marginBottom: 20 }]}>🍡 Descuentos Mix & Match (Por Cantidad)</Text>
 
                                     {/* List of rules */}
@@ -3370,13 +2921,19 @@ export default function BusinessProductsScreen() {
                                                         <View style={[styles.cell, { width: 60, alignItems: 'center' }]}>
                                                             <Switch style={{ transform: [{ scale: 0.8 }] } as any} value={draft.available} onValueChange={(val) => updateDraft(draft.id!, 'available', val)} trackColor={{ false: '#ccc', true: '#007AFF' }} thumbColor={'#fff'} />
                                                         </View>
-                                                        <View style={[styles.cell, { flex: 1, maxWidth: 80, alignItems: 'center', justifyContent: 'center' }]}>
+                                                        <View style={[styles.cell, { flex: 2, maxWidth: 200 }]}>
                                                             <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center' }}>
                                                                 {draft.imageUrl ? (
-                                                                    <Image source={{ uri: draft.imageUrl }} style={{ width: 28, height: 28, borderRadius: 4 }} />
+                                                                    <Image source={{ uri: draft.imageUrl }} style={{ width: 30, height: 30, borderRadius: 4 }} />
                                                                 ) : null}
                                                                 <Pressable
-                                                                    style={{ padding: 8, backgroundColor: '#f0f9ff', borderRadius: 6, borderWidth: 1, borderColor: '#bae6fd', alignItems: 'center', justifyContent: 'center', width: 36, height: 36 }}
+                                                                    style={{ padding: 8, backgroundColor: '#f0f0f0', borderRadius: 4, borderWidth: 1, borderColor: '#ddd', flex: 1, alignItems: 'center' }}
+                                                                    onPress={() => setPickerState({ visible: true, type: 'draft', id: draft.id! })}
+                                                                >
+                                                                    <Text style={{ fontSize: 13, fontWeight: '500' }}>📷 {draft.imageUrl ? 'Cambiar' : 'Subir'}</Text>
+                                                                </Pressable>
+                                                                <Pressable
+                                                                    style={{ padding: 8, backgroundColor: '#f0f9ff', borderRadius: 4, borderWidth: 1, borderColor: '#bae6fd', alignItems: 'center', justifyContent: 'center', width: 36, height: 36 }}
                                                                     onPress={() => {
                                                                         setEditingProduct(draft);
                                                                         setIsDetailModalOpen(true);
@@ -3758,7 +3315,9 @@ export default function BusinessProductsScreen() {
                                                 <View style={{ flex: 2 }}>
                                                     <Text style={{ fontWeight: 'bold', fontSize: 16 }}>{product.name}</Text>
                                                     <Text style={{ color: '#666', fontSize: 13 }}>
-                                                        Llevando {product.dailyOfferMinQty} u. a ${product.dailyOfferPrice} c/u
+                                                        {product.dailyOfferMinQty && product.dailyOfferMinQty > 0
+                                                            ? `Llevando mín. ${product.dailyOfferMinQty} ${product.unitType === 'unit' ? 'u.' : 'kg'} a $${product.dailyOfferPrice} c/u`
+                                                            : `Desde 0kg a $${product.dailyOfferPrice}${product.unitType === 'unit' ? ' c/u' : ' el kg'}`}
                                                     </Text>
                                                 </View>
                                                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
@@ -3808,7 +3367,7 @@ export default function BusinessProductsScreen() {
                                             <TextInput
                                                 style={styles.input}
                                                 keyboardType="numeric"
-                                                placeholder="Ej: 3"
+                                                placeholder="0 (desde 0kg) o mín."
                                                 value={dailyOfferDraft?.minQty || ''}
                                                 onChangeText={(val) => setDailyOfferDraft(prev => ({ ...prev!, minQty: val }))}
                                             />
@@ -5128,49 +4687,17 @@ export default function BusinessProductsScreen() {
             </ScrollView>
 
             {/* ACTION BAR INFERIOR DE GUARDADO FIREBASE */}
-            {isMobile ? (
+            <View style={[styles.fixedFooter, { zIndex: 100 }]}>
                 <Pressable
-                    style={{
-                        position: 'absolute',
-                        bottom: 80,
-                        right: 20,
-                        width: 58,
-                        height: 58,
-                        borderRadius: 29,
-                        backgroundColor: isSaving ? '#6b7280' : '#10b981',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 4 },
-                        shadowOpacity: 0.3,
-                        shadowRadius: 6,
-                        elevation: 8,
-                        zIndex: 1000,
-                        borderWidth: 2,
-                        borderColor: '#fff'
-                    }}
+                    style={[styles.saveBtnFixed, isSaving && styles.saveBtnFixedDisabled]}
                     onPress={handleSaveCatalog}
                     disabled={isSaving || !settings}
                 >
-                    {isSaving ? (
-                        <ActivityIndicator color="#fff" size="small" />
-                    ) : (
-                        <FontAwesome name="check" size={26} color="#fff" />
-                    )}
+                    <Text style={[styles.saveBtnTextFixed, isSaving && styles.saveBtnTextDisabled]}>
+                        {isSaving ? "Guardando en la Nube..." : "Guardar Todo Online (Catálogo y Ajustes)"}
+                    </Text>
                 </Pressable>
-            ) : (
-                <View style={[styles.fixedFooter, { zIndex: 100 }]}>
-                    <Pressable
-                        style={[styles.saveBtnFixed, isSaving && styles.saveBtnFixedDisabled]}
-                        onPress={handleSaveCatalog}
-                        disabled={isSaving || !settings}
-                    >
-                        <Text style={[styles.saveBtnTextFixed, isSaving && styles.saveBtnTextDisabled]}>
-                            {isSaving ? "Guardando en la Nube..." : "Guardar Todo Online (Catálogo y Ajustes)"}
-                        </Text>
-                    </Pressable>
-                </View>
-            )}
+            </View>
 
             {/* IMAGE PICKER PORTAL */}
             {pickerState && (
@@ -5270,26 +4797,24 @@ export default function BusinessProductsScreen() {
                                         />
                                     </View>
 
-                                    {(editingProduct.specialOffer || editingProduct.isDailyOffer) && (
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15, marginTop: 10 }}>
-                                            {editingProduct.imageUrl ? (
-                                                <Image source={{ uri: editingProduct.imageUrl }} style={{ width: 60, height: 60, borderRadius: 8 }} />
-                                            ) : (
-                                                <View style={{ width: 60, height: 60, borderRadius: 8, backgroundColor: '#e2e8f0', justifyContent: 'center', alignItems: 'center' }}>
-                                                    <FontAwesome name="camera" size={20} color="#94a3b8" />
-                                                </View>
-                                            )}
-                                            <Pressable
-                                                style={{ flex: 1, padding: 10, backgroundColor: '#f1f5f9', borderRadius: 6, borderWidth: 1, borderColor: '#cbd5e1', alignItems: 'center' }}
-                                                onPress={() => {
-                                                    const isDraft = drafts.some(d => d.id === editingProduct.id);
-                                                    setPickerState({ visible: true, type: isDraft ? 'draft' : 'product', id: editingProduct.id! });
-                                                }}
-                                            >
-                                                <Text style={{ fontWeight: '600', color: '#475569' }}>📷 {editingProduct.imageUrl ? 'Cambiar Foto' : 'Subir Foto'}</Text>
-                                            </Pressable>
-                                        </View>
-                                    )}
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 15, marginTop: 10 }}>
+                                        {editingProduct.imageUrl ? (
+                                            <Image source={{ uri: editingProduct.imageUrl }} style={{ width: 60, height: 60, borderRadius: 8 }} />
+                                        ) : (
+                                            <View style={{ width: 60, height: 60, borderRadius: 8, backgroundColor: '#e2e8f0', justifyContent: 'center', alignItems: 'center' }}>
+                                                <FontAwesome name="camera" size={20} color="#94a3b8" />
+                                            </View>
+                                        )}
+                                        <Pressable
+                                            style={{ flex: 1, padding: 10, backgroundColor: '#f1f5f9', borderRadius: 6, borderWidth: 1, borderColor: '#cbd5e1', alignItems: 'center' }}
+                                            onPress={() => {
+                                                const isDraft = drafts.some(d => d.id === editingProduct.id);
+                                                setPickerState({ visible: true, type: isDraft ? 'draft' : 'product', id: editingProduct.id! });
+                                            }}
+                                        >
+                                            <Text style={{ fontWeight: '600', color: '#475569' }}>📷 {editingProduct.imageUrl ? 'Cambiar Foto' : 'Subir Foto'}</Text>
+                                        </Pressable>
+                                    </View>
                                 </View>
                             </ScrollView>
 
@@ -5337,7 +4862,7 @@ export default function BusinessProductsScreen() {
                         await saveBusinessSettings(businessProfile.id, newSettings);
                         setSettings(newSettings);
                     }
-                    alert('Catálogo actualizado e importado correctamente desde Excel.');
+                    showToast('¡Catálogo actualizado e importado con éxito desde Excel!');
                 }}
             />
 
@@ -5430,16 +4955,50 @@ export default function BusinessProductsScreen() {
                     </View>
                 </Modal>
             )}
+
+            {toastMessage && (
+                <View style={{
+                    position: 'fixed' as any,
+                    top: 24,
+                    left: 0,
+                    right: 0,
+                    zIndex: 999999,
+                    alignItems: 'center',
+                    pointerEvents: 'box-none'
+                }}>
+                    <View style={{
+                        backgroundColor: '#15803d',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 12,
+                        paddingVertical: 14,
+                        paddingHorizontal: 22,
+                        borderRadius: 30,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.3,
+                        shadowRadius: 10,
+                        elevation: 10,
+                        maxWidth: '90%'
+                    }}>
+                        <Text style={{ color: '#fff', fontSize: 18 }}>✓</Text>
+                        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>{toastMessage}</Text>
+                        <Pressable onPress={() => setToastMessage(null)} style={{ padding: 4, marginLeft: 8 }}>
+                            <Text style={{ color: '#bbf7d0', fontSize: 16, fontWeight: 'bold' }}>✕</Text>
+                        </Pressable>
+                    </View>
+                </View>
+            )}
         </View>
     );
 }
 
 const styles = StyleSheet.create({
-    container: { flex: 1, backgroundColor: '#f4f5f7', width: '100%', maxWidth: '100vw' as any, overflowX: 'hidden' as any },
-    content: { padding: 30, paddingBottom: 100, width: '100%', maxWidth: '100%' },
+    container: { flex: 1, backgroundColor: '#f4f5f7' },
+    content: { padding: 30, paddingBottom: 100 },
     pageTitle: { fontSize: 28, fontWeight: '800', color: '#111', marginBottom: 5 },
     subtitle: { fontSize: 14, color: '#666', marginBottom: 30 },
-    section: { backgroundColor: '#fff', borderRadius: 12, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, width: '100%', maxWidth: '100%', overflow: 'hidden' as any },
+    section: { backgroundColor: '#fff', borderRadius: 12, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10 },
     sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' },
     sectionTitle: { fontSize: 20, fontWeight: 'bold', color: '#222', marginRight: 15 },
     searchInput: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 8, flex: 1, minWidth: 200 },

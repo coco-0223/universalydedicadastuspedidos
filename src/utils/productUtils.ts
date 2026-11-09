@@ -72,9 +72,10 @@ export const getItemPricing = (
     if (item.cashUnitPrice !== undefined && item.cashUnitPrice !== null) {
         cashUnitPrice = item.cashUnitPrice;
     } else if (!isFoodBusiness && item.product.isDailyOffer && item.product.dailyOfferPrice) {
-        const minQty = item.product.dailyOfferMinQty || 1;
-        if (qty >= minQty) {
-            cashUnitPrice = item.product.dailyOfferPrice / minQty;
+        const rawMinQty = item.product.dailyOfferMinQty !== undefined ? Number(item.product.dailyOfferMinQty) : 0;
+        const minQty = isNaN(rawMinQty) ? 0 : rawMinQty;
+        if (minQty <= 0 || qty >= minQty) {
+            cashUnitPrice = minQty > 1 ? (item.product.dailyOfferPrice / minQty) : item.product.dailyOfferPrice;
         }
     }
 
