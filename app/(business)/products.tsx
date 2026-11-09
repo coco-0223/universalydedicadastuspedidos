@@ -12,6 +12,126 @@ import { useAppContext } from '../../src/context/AppContext';
 import { saveBusinessSettings, saveCatalogToFirebase } from '../../src/services/businessService';
 import { CrossSellRule, MixAndMatchRule, Offer, Product } from '../../src/types';
 
+
+const SearchableDropdown = ({ value, onSelect, placeholder, options, style }: { value: string, onSelect: (val: string) => void, placeholder: string, options: any[], style?: any }) => {
+    const [search, setSearch] = useState("");
+    const [isOpen, setIsOpen] = useState(false);
+    const selectedOption = options.find(o => o.id === value);
+
+    const filtered = useMemo(() => {
+        if (!search) return options;
+        const low = search.toLowerCase();
+        return options.filter(o => (o.name || '').toLowerCase().includes(low));
+    }, [search, options]);
+
+    return (
+        <View style={[{ zIndex: isOpen ? 9999 : 1, position: "relative" }, style]}>
+            <Pressable
+                style={[
+                    {
+                        borderWidth: 1,
+                        borderColor: isOpen ? "#3b82f6" : "#cbd5e1",
+                        borderRadius: 8,
+                        paddingHorizontal: 12,
+                        paddingVertical: 10,
+                        backgroundColor: "#fff",
+                        flexDirection: "row",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        minHeight: 42
+                    }
+                ]}
+                onPress={() => {
+                    setIsOpen(prev => !prev);
+                    setSearch("");
+                }}
+            >
+                <Text
+                    numberOfLines={1}
+                    style={{
+                        color: selectedOption ? "#0f172a" : "#94a3b8",
+                        fontSize: 15,
+                        fontWeight: selectedOption ? "bold" : "normal",
+                        flex: 1,
+                        marginRight: 8
+                    }}
+                >
+                    {selectedOption ? selectedOption.name : placeholder}
+                </Text>
+                <FontAwesome name={isOpen ? "chevron-up" : "chevron-down"} size={12} color="#64748b" />
+            </Pressable>
+
+            {isOpen && (
+                <View style={{
+                    marginTop: 4,
+                    backgroundColor: "#fff",
+                    borderWidth: 1,
+                    borderColor: "#cbd5e1",
+                    borderRadius: 8,
+                    maxHeight: 230,
+                    zIndex: 10000,
+                    shadowColor: "#000",
+                    shadowOffset: { width: 0, height: 4 },
+                    shadowOpacity: 0.15,
+                    shadowRadius: 8,
+                    elevation: 8,
+                    overflow: "hidden"
+                }}>
+                    <View style={{ padding: 8, borderBottomWidth: 1, borderBottomColor: "#f1f5f9", backgroundColor: "#f8fafc" }}>
+                        <TextInput
+                            style={{
+                                backgroundColor: "#fff",
+                                borderWidth: 1,
+                                borderColor: "#cbd5e1",
+                                borderRadius: 6,
+                                paddingHorizontal: 10,
+                                paddingVertical: 8,
+                                fontSize: 16,
+                                color: "#1e293b"
+                            }}
+                            placeholder="🔍 Filtrar por nombre..."
+                            value={search}
+                            onChangeText={setSearch}
+                        />
+                    </View>
+                    <ScrollView nestedScrollEnabled={true} keyboardShouldPersistTaps="handled" style={{ maxHeight: 170 }}>
+                        {filtered.map(opt => (
+                            <Pressable
+                                key={opt.id}
+                                style={({ pressed }) => ({
+                                    paddingVertical: 11,
+                                    paddingHorizontal: 12,
+                                    backgroundColor: pressed ? "#f1f5f9" : (opt.id === value ? "#eff6ff" : "#fff"),
+                                    borderBottomWidth: 1,
+                                    borderBottomColor: "#f1f5f9",
+                                    flexDirection: "row",
+                                    justifyContent: "space-between",
+                                    alignItems: "center"
+                                })}
+                                onPress={() => {
+                                    onSelect(opt.id);
+                                    setIsOpen(false);
+                                    setSearch("");
+                                }}
+                            >
+                                <Text style={{ fontWeight: opt.id === value ? "bold" : "normal", color: opt.id === value ? "#2563eb" : "#1e293b", fontSize: 14, flex: 1 }}>
+                                    {opt.name} {opt.price !== undefined ? `(${opt.price})` : ""}
+                                </Text>
+                                {opt.id === value && <FontAwesome name="check" size={12} color="#2563eb" />}
+                            </Pressable>
+                        ))}
+                        {filtered.length === 0 && (
+                            <Text style={{ padding: 12, textAlign: "center", color: "#94a3b8", fontSize: 14 }}>
+                                No se encontraron productos
+                            </Text>
+                        )}
+                    </ScrollView>
+                </View>
+            )}
+        </View>
+    );
+};
+
 export default function BusinessProductsScreen() {
     const { products, setProducts, settings, setSettings, offers, setOffers, businessProfile, user } = useAppContext();
     const { width } = useWindowDimensions();
@@ -203,7 +323,8 @@ export default function BusinessProductsScreen() {
             originalOffersRef.current = JSON.parse(JSON.stringify(offers));
 
             console.log("✅ Guardado completado con éxito");
-            Alert.alert('Éxito', 'Catálogo, categorías y ajustes guardados online correctamente.');
+            showToast('¡Cambios guardados!');
+            if (Platform.OS !== 'web') Alert.alert('Éxito', 'Catálogo, categorías y ajustes guardados online correctamente.');
         } catch (e) {
             console.error("❌ Error al guardar catálogo:", e);
             Alert.alert('Error', 'No se pudieron guardar los cambios en Firebase. Verifica tu conexión.');
@@ -277,6 +398,9 @@ export default function BusinessProductsScreen() {
 
     const [newCatName, setNewCatName] = useState('');
     const [newCatColor, setNewCatColor] = useState('#007AFF');
+    const [categoryPickerProductId, setCategoryPickerProductId] = useState<string | null>(null);
+    const [quickNewCatName, setQuickNewCatName] = useState('');
+    const [quickNewCatColor, setQuickNewCatColor] = useState('#0284c7');
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const showToast = (msg: string) => {
         setToastMessage(msg);
@@ -1174,8 +1298,10 @@ export default function BusinessProductsScreen() {
             quantity: bp.quantity.toString()
         }));
 
-        setVolumeLevels([...childLevels, ...tierLevels].sort((a, b) => parseFloat(a.quantity) - parseFloat(b.quantity)));
+        const combined = [...childLevels, ...tierLevels].sort((a, b) => parseFloat(a.quantity) - parseFloat(b.quantity));
+        setVolumeLevels(combined.length > 0 ? combined : [{ id: Math.random().toString(), productId: 'tier', price: parent ? parent.price.toString() : '', quantity: '' }]);
         setVolumeView('create');
+        setIsVolumePricingModalOpen(true);
     };
 
     const handleSaveVolumePricingConfirm = () => {
@@ -1218,7 +1344,7 @@ export default function BusinessProductsScreen() {
     };
 
     const openVolumePricing = () => {
-        const hasExisting = products.some(p => p.parentId);
+        const hasExisting = products.some(p => p.parentId || (p.bulkPricing && p.bulkPricing.length > 0));
         if (hasExisting) {
             setVolumeView('list');
         } else {
@@ -1472,80 +1598,6 @@ export default function BusinessProductsScreen() {
                 <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: catColor, marginRight: 8 }} />
                 <Text style={{ fontSize: 14 }}>{value || 'Seleccionar'}</Text>
             </Pressable>
-        );
-    };
-
-    const SearchableDropdown = ({ value, onSelect, placeholder, options, style }: { value: string, onSelect: (val: string) => void, placeholder: string, options: any[], style?: any }) => {
-        const [search, setSearch] = useState("");
-        const [isOpen, setIsOpen] = useState(false);
-        const selectedOption = options.find(o => o.id === value);
-
-        const filtered = useMemo(() => {
-            if (!search) return options;
-            const low = search.toLowerCase();
-            return options.filter(o => o.name.toLowerCase().includes(low));
-        }, [search, options]);
-
-        return (
-            <View style={[{ zIndex: isOpen ? 9999 : 1, position: "relative" }, style]}>
-                <Pressable
-                    style={[styles.modalInput, { marginBottom: 0, backgroundColor: "#fff", flexDirection: "row", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }]}
-                    onPress={() => {
-                        setIsOpen(!isOpen);
-                        setSearch("");
-                    }}
-                >
-                    <Text style={{ color: selectedOption ? "#1e293b" : "#94a3b8", fontSize: 14, fontWeight: selectedOption ? "bold" : "normal" }}>
-                        {selectedOption ? selectedOption.name : placeholder}
-                    </Text>
-                    <FontAwesome name={isOpen ? "chevron-up" : "chevron-down"} size={12} color="#64748b" />
-                </Pressable>
-
-                {isOpen && (
-                    <View style={{ position: "absolute", top: 45, left: 0, right: 0, backgroundColor: "#fff", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 8, maxHeight: 220, zIndex: 10000, shadowColor: "#000", shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.15, shadowRadius: 8, elevation: 8 }}>
-                        <View style={{ padding: 8, borderBottomWidth: 1, borderBottomColor: "#f1f5f9", backgroundColor: "#f8fafc" }}>
-                            <TextInput
-                                style={{ backgroundColor: "#fff", borderWidth: 1, borderColor: "#cbd5e1", borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6, fontSize: 13, color: "#1e293b" }}
-                                placeholder="🔍 Buscar producto..."
-                                value={search}
-                                onChangeText={setSearch}
-                                autoFocus
-                            />
-                        </View>
-                        <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 160 }}>
-                            {filtered.map(opt => (
-                                <Pressable
-                                    key={opt.id}
-                                    style={({ pressed }) => ({
-                                        padding: 10,
-                                        backgroundColor: pressed ? "#f1f5f9" : (opt.id === value ? "#eff6ff" : "#fff"),
-                                        borderBottomWidth: 1,
-                                        borderBottomColor: "#f1f5f9",
-                                        flexDirection: "row",
-                                        justifyContent: "space-between",
-                                        alignItems: "center"
-                                    })}
-                                    onPress={() => {
-                                        onSelect(opt.id);
-                                        setIsOpen(false);
-                                        setSearch("");
-                                    }}
-                                >
-                                    <Text style={{ fontWeight: opt.id === value ? "bold" : "normal", color: opt.id === value ? "#2563eb" : "#1e293b", fontSize: 13 }}>
-                                        {opt.name} {opt.price !== undefined ? `($${opt.price})` : ""}
-                                    </Text>
-                                    {opt.id === value && <FontAwesome name="check" size={12} color="#2563eb" />}
-                                </Pressable>
-                            ))}
-                            {filtered.length === 0 && (
-                                <Text style={{ padding: 12, textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
-                                    No se encontraron productos
-                                </Text>
-                            )}
-                        </ScrollView>
-                    </View>
-                )}
-            </View>
         );
     };
 
@@ -1965,6 +2017,8 @@ export default function BusinessProductsScreen() {
                                     const isProductInCombo = offers.some(o => o.active && o.requirements?.some((r: any) => r.productId === product.id) && o.bundlePrice !== undefined);
                                     const isProductSpecial = product.specialOffer?.active;
                                     const isProductDaily = product.isDailyOffer;
+                                    const childVolumeItems = products.filter(p => p.parentId === product.id);
+                                    const hasVolumeConfig = (product.bulkPricing?.length ?? 0) > 0 || childVolumeItems.length > 0;
 
                                     const catColor = categoryColors[product.category] || '#3b82f6';
 
@@ -1978,6 +2032,9 @@ export default function BusinessProductsScreen() {
                                                 borderColor: selectedIds.has(product.id) ? '#ef4444' : product.available === false ? '#fca5a5' : '#e5e7eb',
                                                 padding: 12,
                                                 marginBottom: 10,
+                                                width: '100%',
+                                                maxWidth: '100%',
+                                                overflow: 'hidden',
                                                 shadowColor: '#000',
                                                 shadowOffset: { width: 0, height: 1 },
                                                 shadowOpacity: 0.05,
@@ -1985,9 +2042,9 @@ export default function BusinessProductsScreen() {
                                                 elevation: 1
                                             }}
                                         >
-                                            {/* Row 1: Checkbox, Name, Category Pill, Edit Pencil */}
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                                <Pressable onPress={() => toggleSelection(product.id)} style={{ padding: 4 }}>
+                                            {/* Row 1: Checkbox, Name, Clickable Category Pill, Edit Pencil */}
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, width: '100%' }}>
+                                                <Pressable onPress={() => toggleSelection(product.id)} style={{ padding: 2, flexShrink: 0 }}>
                                                     {selectedIds.has(product.id) ? (
                                                         <Text style={{ fontSize: 18, color: '#ef4444' }}>☑</Text>
                                                     ) : (
@@ -2001,49 +2058,64 @@ export default function BusinessProductsScreen() {
                                                         fontWeight: '700',
                                                         color: '#0f172a',
                                                         flex: 1,
-                                                        paddingVertical: 2
+                                                        minWidth: 0,
+                                                        flexShrink: 1,
+                                                        paddingVertical: 2,
+                                                        paddingHorizontal: 4
                                                     }}
                                                     value={product.name}
                                                     onChangeText={(val) => updateProduct(product.id, 'name', val)}
                                                 />
 
-                                                <View style={{
-                                                    flexDirection: 'row',
-                                                    alignItems: 'center',
-                                                    gap: 5,
-                                                    backgroundColor: catColor + '1A',
-                                                    paddingHorizontal: 8,
-                                                    paddingVertical: 3,
-                                                    borderRadius: 12,
-                                                    borderWidth: 1,
-                                                    borderColor: catColor + '40'
-                                                }}>
-                                                    <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: catColor }} />
-                                                    <Text style={{ fontSize: 11, fontWeight: '700', color: catColor }}>{product.category}</Text>
-                                                </View>
+                                                <Pressable
+                                                    onPress={() => {
+                                                        setCategoryPickerProductId(product.id);
+                                                        setQuickNewCatName('');
+                                                    }}
+                                                    style={{
+                                                        flexDirection: 'row',
+                                                        alignItems: 'center',
+                                                        gap: 4,
+                                                        backgroundColor: catColor + '1A',
+                                                        paddingHorizontal: 8,
+                                                        paddingVertical: 4,
+                                                        borderRadius: 12,
+                                                        borderWidth: 1,
+                                                        borderColor: catColor + '50',
+                                                        flexShrink: 0,
+                                                        maxWidth: 115
+                                                    }}
+                                                >
+                                                    <View style={{ width: 7, height: 7, borderRadius: 4, backgroundColor: catColor, flexShrink: 0 }} />
+                                                    <Text numberOfLines={1} style={{ fontSize: 11, fontWeight: '700', color: catColor, flexShrink: 1 }}>
+                                                        {product.category || 'Categoría'}
+                                                    </Text>
+                                                    <FontAwesome name="caret-down" size={10} color={catColor} />
+                                                </Pressable>
 
                                                 <Pressable
                                                     style={{
-                                                        width: 34,
-                                                        height: 34,
+                                                        width: 32,
+                                                        height: 32,
                                                         borderRadius: 8,
                                                         backgroundColor: '#f0f9ff',
                                                         borderWidth: 1,
                                                         borderColor: '#bae6fd',
                                                         alignItems: 'center',
-                                                        justifyContent: 'center'
+                                                        justifyContent: 'center',
+                                                        flexShrink: 0
                                                     }}
                                                     onPress={() => {
                                                         setEditingProduct(product);
                                                         setIsDetailModalOpen(true);
                                                     }}
                                                 >
-                                                    <FontAwesome name="pencil" size={14} color="#0284c7" />
+                                                    <FontAwesome name="pencil" size={13} color="#0284c7" />
                                                 </Pressable>
                                             </View>
 
-                                            {/* Row 2: Price / Unit & Stock Switch */}
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }}>
+                                            {/* Row 2: Price + Clickable Unit & Stock Switch */}
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, gap: 8, width: '100%' }}>
                                                 <View style={{
                                                     flexDirection: 'row',
                                                     alignItems: 'center',
@@ -2051,30 +2123,54 @@ export default function BusinessProductsScreen() {
                                                     borderWidth: 1,
                                                     borderColor: '#cbd5e1',
                                                     borderRadius: 8,
-                                                    paddingHorizontal: 10,
+                                                    paddingHorizontal: 8,
                                                     paddingVertical: 4,
                                                     flex: 1,
-                                                    maxWidth: 190
+                                                    minWidth: 0,
+                                                    maxWidth: 210
                                                 }}>
-                                                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#334155', marginRight: 4 }}>$</Text>
+                                                    <Text style={{ fontSize: 15, fontWeight: '700', color: '#334155', marginRight: 3, flexShrink: 0 }}>$</Text>
                                                     <TextInput
                                                         style={{
                                                             fontSize: 16,
                                                             fontWeight: '700',
                                                             color: '#0f172a',
                                                             flex: 1,
+                                                            minWidth: 0,
+                                                            flexShrink: 1,
                                                             paddingVertical: 2
                                                         }}
                                                         value={product.price?.toString()}
                                                         onChangeText={(val) => updateProduct(product.id, 'price', parseFloat(val) || 0)}
                                                         keyboardType="numeric"
                                                     />
-                                                    <Text style={{ fontSize: 12, color: '#64748b', marginLeft: 4 }}>
-                                                        / {product.unitType === 'unit' ? 'Unidad' : product.unitType === 'piece' ? 'Pieza' : 'Kilo'}
-                                                    </Text>
+                                                    <Pressable
+                                                        onPress={() => {
+                                                            const current = product.unitType || 'kg';
+                                                            const next = current === 'kg' ? 'unit' : current === 'unit' ? 'piece' : 'kg';
+                                                            updateProduct(product.id, 'unitType', next);
+                                                            if (next !== 'piece') updateProduct(product.id, 'approxWeight', undefined);
+                                                        }}
+                                                        style={{
+                                                            backgroundColor: '#e2e8f0',
+                                                            paddingHorizontal: 6,
+                                                            paddingVertical: 3,
+                                                            borderRadius: 6,
+                                                            marginLeft: 4,
+                                                            flexShrink: 0,
+                                                            flexDirection: 'row',
+                                                            alignItems: 'center',
+                                                            gap: 3
+                                                        }}
+                                                    >
+                                                        <Text style={{ fontSize: 11, fontWeight: '700', color: '#334155' }}>
+                                                            /{product.unitType === 'unit' ? 'Unid.' : product.unitType === 'piece' ? 'Pieza' : 'Kilo'}
+                                                        </Text>
+                                                        <FontAwesome name="unsorted" size={9} color="#64748b" />
+                                                    </Pressable>
                                                 </View>
 
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 0 }}>
                                                     <Text style={{ fontSize: 12, fontWeight: '600', color: product.available !== false ? '#15803d' : '#b91c1c' }}>
                                                         {product.available !== false ? 'Stock' : 'Sin stock'}
                                                     </Text>
@@ -2094,8 +2190,25 @@ export default function BusinessProductsScreen() {
                                                 </View>
                                             </View>
 
+                                            {/* Si el tipo de venta es Pieza, mostrar Peso Aprox editable en la misma tarjeta */}
+                                            {product.unitType === 'piece' && (
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, backgroundColor: '#f8fafc', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: '#e2e8f0' }}>
+                                                    <Text style={{ fontSize: 12, color: '#475569', fontWeight: '600' }}>⚖️ Peso aprox. por pieza (kg):</Text>
+                                                    <TextInput
+                                                        style={{ fontSize: 16, fontWeight: 'bold', color: '#0f172a', backgroundColor: '#fff', borderWidth: 1, borderColor: '#cbd5e1', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, width: 70, minWidth: 0 }}
+                                                        value={product.approxWeight ? product.approxWeight.toString() : ''}
+                                                        placeholder="Ej: 4.5"
+                                                        keyboardType="numeric"
+                                                        onChangeText={(val) => {
+                                                            const num = parseFloat(val.replace(',', '.'));
+                                                            updateProduct(product.id, 'approxWeight', isNaN(num) ? undefined : num);
+                                                        }}
+                                                    />
+                                                </View>
+                                            )}
+
                                             {/* Row 3: Badges de Ofertas / Volumen si existen */}
-                                            {(isProductDaily || isProductSpecial || (product.bulkPricing?.length ?? 0) > 0 || offers.some(o => o.active && o.requirements?.some((r: any) => r.productId === product.id))) && (
+                                            {(isProductDaily || isProductSpecial || hasVolumeConfig || isProductInCombo) && (
                                                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                                                     {isProductDaily && (
                                                         <Pressable onPress={() => handleEditDailyOffer(product.id)} style={{ backgroundColor: '#fffbeb', borderWidth: 1, borderColor: '#fcd34d', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
@@ -2108,9 +2221,14 @@ export default function BusinessProductsScreen() {
                                                         </Pressable>
                                                     )}
                                                     {product.bulkPricing?.map((t: any, idx: number) => (
-                                                        <View key={idx} style={{ backgroundColor: '#e0f2fe', borderWidth: 1, borderColor: '#bae6fd', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
-                                                            <Text style={{ fontSize: 11, color: '#0369a1', fontWeight: 'bold' }}>📦 {t.quantity}+ a ${t.price} c/u</Text>
-                                                        </View>
+                                                        <Pressable key={idx} onPress={() => handleEditVolumePricing(product.id)} style={{ backgroundColor: '#e0f2fe', borderWidth: 1, borderColor: '#bae6fd', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                                                            <Text style={{ fontSize: 11, color: '#0369a1', fontWeight: 'bold' }}>📦 {t.quantity}+ a ${t.price}</Text>
+                                                        </Pressable>
+                                                    ))}
+                                                    {childVolumeItems.map((c: any) => (
+                                                        <Pressable key={c.id} onPress={() => handleEditVolumePricing(product.id)} style={{ backgroundColor: '#e0f2fe', borderWidth: 1, borderColor: '#bae6fd', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                                                            <Text style={{ fontSize: 11, color: '#0369a1', fontWeight: 'bold' }}>📦 {c.name}: ${c.price}</Text>
+                                                        </Pressable>
                                                     ))}
                                                     {offers.filter(o => o.active && o.requirements?.some((r: any) => r.productId === product.id)).map(o => (
                                                         <Pressable key={o.id} onPress={() => handleEditCombo(o)} style={{ backgroundColor: '#faf5ff', borderWidth: 1, borderColor: '#e9d5ff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
@@ -2121,7 +2239,7 @@ export default function BusinessProductsScreen() {
                                             )}
 
                                             {/* Row 4: Promo input & calc badge */}
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8 }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 8, width: '100%' }}>
                                                 <View style={{
                                                     flexDirection: 'row',
                                                     alignItems: 'center',
@@ -2131,10 +2249,11 @@ export default function BusinessProductsScreen() {
                                                     borderRadius: 6,
                                                     paddingHorizontal: 8,
                                                     paddingVertical: 2,
-                                                    flex: 1
+                                                    flex: 1,
+                                                    minWidth: 0
                                                 }}>
                                                     <TextInput
-                                                        style={{ fontSize: 13, color: '#334155', flex: 1, paddingVertical: 2 }}
+                                                        style={{ fontSize: 16, color: '#334155', flex: 1, minWidth: 0, flexShrink: 1, paddingVertical: 2 }}
                                                         value={liveRaw}
                                                         onChangeText={(val) => setActivePromos({ ...activePromos, [product.id]: val })}
                                                         onEndEditing={() => {
@@ -2153,16 +2272,17 @@ export default function BusinessProductsScreen() {
                                                     paddingVertical: 4,
                                                     borderRadius: 6,
                                                     minWidth: 50,
-                                                    alignItems: 'center'
+                                                    alignItems: 'center',
+                                                    flexShrink: 0
                                                 }}>
-                                                    <Text style={{ fontSize: 11, color: '#64748b', fontWeight: '600' }}>
+                                                    <Text style={{ fontSize: 12, color: '#64748b', fontWeight: '600' }}>
                                                         {liveCalc ? '$' + liveCalc : '-'}
                                                     </Text>
                                                 </View>
                                                 {product.promotionalPrice ? (
                                                     <Pressable
                                                         onPress={() => updateProduct(product.id, 'promotionalPrice', undefined)}
-                                                        style={{ padding: 4 }}
+                                                        style={{ padding: 4, flexShrink: 0 }}
                                                     >
                                                         <FontAwesome name="times" size={14} color="#94a3b8" />
                                                     </Pressable>
@@ -3625,7 +3745,7 @@ export default function BusinessProductsScreen() {
                             )}
 
                             {volumeView === 'create' && (
-                                <>
+                                <ScrollView style={{ maxHeight: isMobile ? 540 : 620 }} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                                     <Text style={styles.modalTitle}>Configurar Niveles de Volumen</Text>
 
                                     <Text style={styles.modalLabel}>Producto Principal</Text>
@@ -3634,24 +3754,96 @@ export default function BusinessProductsScreen() {
                                         onSelect={setVolumeParentId}
                                         placeholder="Buscar Producto Principal..."
                                         options={products.filter(p => !p.parentId)}
-                                        style={{ marginBottom: 20 }}
+                                        style={{ marginBottom: 16 }}
                                     />
 
                                     <Text style={styles.modalLabel}>Niveles Asociados</Text>
-                                    <View style={{ borderWidth: 1, borderColor: '#eee', borderRadius: 8, zIndex: 50 }}>
-                                        <View style={{ flexDirection: 'row', backgroundColor: '#f4f5f7', padding: 10, borderBottomWidth: 1, borderColor: '#eee' }}>
-                                            <Text style={{ flex: 2, fontWeight: 'bold', fontSize: 13 }}>Item Nivel</Text>
-                                            <Text style={{ flex: 1, fontWeight: 'bold', fontSize: 13 }}>Precio ($)</Text>
-                                            <Text style={{ flex: 1, fontWeight: 'bold', fontSize: 13 }}>Cantidad/Kg</Text>
-                                            <Text style={{ flex: 1, fontWeight: 'bold', fontSize: 13 }}>Precio x Kg</Text>
-                                            <Text style={{ width: 40 }}></Text>
-                                        </View>
+                                    <View style={{ borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 10, backgroundColor: '#f8fafc', padding: isMobile ? 8 : 0 }}>
+                                        {!isMobile && (
+                                            <View style={{ flexDirection: 'row', backgroundColor: '#f1f5f9', padding: 10, borderBottomWidth: 1, borderColor: '#e2e8f0' }}>
+                                                <Text style={{ flex: 2, fontWeight: 'bold', fontSize: 13 }}>Item Nivel</Text>
+                                                <Text style={{ flex: 1, fontWeight: 'bold', fontSize: 13 }}>Precio ($)</Text>
+                                                <Text style={{ flex: 1, fontWeight: 'bold', fontSize: 13 }}>Cantidad/Kg</Text>
+                                                <Text style={{ flex: 1, fontWeight: 'bold', fontSize: 13 }}>Precio x Kg</Text>
+                                                <Text style={{ width: 40 }}></Text>
+                                            </View>
+                                        )}
                                         {volumeLevels.map((level, idx) => {
                                             const pQ = parseFloat(level.price) || 0;
                                             const vQ = parseFloat(level.quantity) || 0;
-                                            const pricePerKg = vQ > 0 ? (pQ / vQ).toFixed(2) : '0.00';
+                                            const pricePerKg = vQ > 0 ? (pQ / vQ).toFixed(0) : '0';
 
-                                            return (
+                                            return isMobile ? (
+                                                <View
+                                                    key={level.id}
+                                                    style={{
+                                                        backgroundColor: '#fff',
+                                                        borderRadius: 10,
+                                                        borderWidth: 1,
+                                                        borderColor: '#cbd5e1',
+                                                        padding: 10,
+                                                        marginBottom: idx < volumeLevels.length - 1 ? 10 : 0
+                                                    }}
+                                                >
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                                                        <View style={{ flex: 1 }}>
+                                                            <SearchableDropdown
+                                                                value={level.productId}
+                                                                placeholder="Seleccionar nivel o producto..."
+                                                                options={[{ id: 'tier', name: '🔥 Solo precio (mismo ítem)' }, ...products.filter(p => p.id !== volumeParentId)]}
+                                                                onSelect={(val) => {
+                                                                    const newV = [...volumeLevels];
+                                                                    newV[idx].productId = val;
+                                                                    if (val === 'tier') {
+                                                                        const parent = products.find(p => p.id === volumeParentId);
+                                                                        if (parent) newV[idx].price = parent.price.toString();
+                                                                    } else {
+                                                                        const selectedProd = products.find(p => p.id === val);
+                                                                        if (selectedProd) newV[idx].price = selectedProd.price.toString();
+                                                                    }
+                                                                    setVolumeLevels(newV);
+                                                                }}
+                                                            />
+                                                        </View>
+                                                        <Pressable
+                                                            style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: '#fef2f2', borderWidth: 1, borderColor: '#fecaca', alignItems: 'center', justifyContent: 'center' }}
+                                                            onPress={() => {
+                                                                const newV = volumeLevels.filter((_, i) => i !== idx);
+                                                                setVolumeLevels(newV);
+                                                            }}
+                                                        >
+                                                            <Text style={{ color: '#ef4444', fontWeight: 'bold', fontSize: 15 }}>✕</Text>
+                                                        </Pressable>
+                                                    </View>
+
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                                        <View style={{ flex: 1 }}>
+                                                            <Text style={{ fontSize: 11, color: '#64748b', fontWeight: 'bold', marginBottom: 3 }}>Precio Total ($)</Text>
+                                                            <TextInput
+                                                                style={[styles.input, { fontSize: 16, backgroundColor: '#fff', borderColor: '#cbd5e1' }]}
+                                                                keyboardType="numeric"
+                                                                placeholder="Ej: 7000"
+                                                                value={level.price}
+                                                                onChangeText={(val) => { const newV = [...volumeLevels]; newV[idx].price = val; setVolumeLevels(newV); }}
+                                                            />
+                                                        </View>
+                                                        <View style={{ flex: 1 }}>
+                                                            <Text style={{ fontSize: 11, color: '#64748b', fontWeight: 'bold', marginBottom: 3 }}>Cant. / Kg</Text>
+                                                            <TextInput
+                                                                style={[styles.input, { fontSize: 16, backgroundColor: '#fff', borderColor: '#cbd5e1' }]}
+                                                                keyboardType="numeric"
+                                                                placeholder="Ej: 3"
+                                                                value={level.quantity}
+                                                                onChangeText={(val) => { const newV = [...volumeLevels]; newV[idx].quantity = val; setVolumeLevels(newV); }}
+                                                            />
+                                                        </View>
+                                                        <View style={{ alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6, paddingTop: 14 }}>
+                                                            <Text style={{ fontSize: 10, color: '#64748b' }}>$/u o kg</Text>
+                                                            <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#0284c7' }}>${pricePerKg}</Text>
+                                                        </View>
+                                                    </View>
+                                                </View>
+                                            ) : (
                                                 <View key={level.id} style={{ flexDirection: 'row', padding: 10, borderBottomWidth: 1, borderColor: '#eee', alignItems: 'center', backgroundColor: '#fff', zIndex: volumeLevels.length - idx }}>
                                                     <View style={{ flex: 2, paddingRight: 10 }}>
                                                         <SearchableDropdown
@@ -3673,10 +3865,10 @@ export default function BusinessProductsScreen() {
                                                         />
                                                     </View>
                                                     <View style={{ flex: 1, paddingRight: 10 }}>
-                                                        <TextInput style={styles.input} keyboardType="numeric" value={level.price} onChangeText={(val) => { const newV = [...volumeLevels]; newV[idx].price = val; setVolumeLevels(newV); }} />
+                                                        <TextInput style={[styles.input, { fontSize: 16 }]} keyboardType="numeric" value={level.price} onChangeText={(val) => { const newV = [...volumeLevels]; newV[idx].price = val; setVolumeLevels(newV); }} />
                                                     </View>
                                                     <View style={{ flex: 1, paddingRight: 10 }}>
-                                                        <TextInput style={styles.input} keyboardType="numeric" value={level.quantity} onChangeText={(val) => { const newV = [...volumeLevels]; newV[idx].quantity = val; setVolumeLevels(newV); }} />
+                                                        <TextInput style={[styles.input, { fontSize: 16 }]} keyboardType="numeric" value={level.quantity} onChangeText={(val) => { const newV = [...volumeLevels]; newV[idx].quantity = val; setVolumeLevels(newV); }} />
                                                     </View>
                                                     <View style={{ flex: 1 }}>
                                                         <Text style={{ color: '#888' }}>${pricePerKg}</Text>
@@ -3689,13 +3881,13 @@ export default function BusinessProductsScreen() {
                                         })}
                                     </View>
 
-                                    <Pressable style={{ marginTop: 15 }} onPress={() => setVolumeLevels([...volumeLevels, { id: Math.random().toString(), productId: '', price: '', quantity: '' }])}>
-                                        <Text style={{ color: '#007AFF', fontWeight: 'bold' }}>+ Añadir otro nivel</Text>
+                                    <Pressable style={{ marginTop: 15, paddingVertical: 6 }} onPress={() => setVolumeLevels([...volumeLevels, { id: Math.random().toString(), productId: 'tier', price: '', quantity: '' }])}>
+                                        <Text style={{ color: '#007AFF', fontWeight: 'bold', fontSize: 15 }}>+ Añadir otro nivel</Text>
                                     </Pressable>
 
                                     <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}>
                                         <Pressable style={styles.modalBtnCancel} onPress={() => {
-                                            const hasExisting = products.some(p => p.parentId);
+                                            const hasExisting = products.some(p => p.parentId || (p.bulkPricing && p.bulkPricing.length > 0));
                                             if (hasExisting) setVolumeView('list');
                                             else setIsVolumePricingModalOpen(false);
                                         }}>
@@ -3709,7 +3901,7 @@ export default function BusinessProductsScreen() {
                                             <Text style={styles.modalBtnTextConfirm}>Continuar</Text>
                                         </Pressable>
                                     </View>
-                                </>
+                                </ScrollView>
                             )}
 
                             {volumeView === 'confirm' && (
@@ -5141,11 +5333,11 @@ export default function BusinessProductsScreen() {
                 <Pressable
                     style={{
                         position: 'absolute',
-                        bottom: 80,
-                        right: 20,
-                        width: 58,
-                        height: 58,
-                        borderRadius: 29,
+                        bottom: 16,
+                        right: 16,
+                        width: 46,
+                        height: 46,
+                        borderRadius: 23,
                         backgroundColor: isSaving ? '#6b7280' : '#10b981',
                         alignItems: 'center',
                         justifyContent: 'center',
@@ -5164,7 +5356,7 @@ export default function BusinessProductsScreen() {
                     {isSaving ? (
                         <ActivityIndicator color="#fff" size="small" />
                     ) : (
-                        <FontAwesome name="check" size={26} color="#fff" />
+                        <FontAwesome name="check" size={20} color="#fff" />
                     )}
                 </Pressable>
             ) : (
@@ -5254,6 +5446,32 @@ export default function BusinessProductsScreen() {
                                             />
                                         </View>
                                     </View>
+
+                                    {/* Botón directo a Configurar Precios por Volumen */}
+                                    {editingProduct.id && !drafts.some(d => d.id === editingProduct.id) && (
+                                        <View style={{ backgroundColor: '#fffbeb', padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#fde68a' }}>
+                                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                                                <View style={{ flex: 1, marginRight: 10 }}>
+                                                    <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#92400e' }}>📦 Precios por Volumen</Text>
+                                                    <Text style={{ fontSize: 11, color: '#b45309', marginTop: 2 }}>
+                                                        Configurá descuentos llevando varios kilos o unidades de este producto.
+                                                    </Text>
+                                                </View>
+                                                <Pressable
+                                                    style={{ backgroundColor: '#f59e0b', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 }}
+                                                    onPress={() => {
+                                                        const targetId = editingProduct.id!;
+                                                        setProducts(products.map(p => p.id === targetId ? editingProduct as Product : p));
+                                                        setIsDetailModalOpen(false);
+                                                        setEditingProduct(null);
+                                                        handleEditVolumePricing(targetId);
+                                                    }}
+                                                >
+                                                    <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 12 }}>Configurar</Text>
+                                                </Pressable>
+                                            </View>
+                                        </View>
+                                    )}
 
                                     <View>
                                         <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#64748b', marginBottom: 5 }}>Descripción:</Text>
@@ -5439,6 +5657,149 @@ export default function BusinessProductsScreen() {
                     </View>
                 </Modal>
             )}
+
+            {/* QUICK CATEGORY PICKER & CREATOR MODAL */}
+            {categoryPickerProductId && (
+                <Modal visible={!!categoryPickerProductId} transparent animationType="fade">
+                    <View style={styles.modalBg}>
+                        <View style={[styles.modalCard, { width: '92%', maxWidth: 420, padding: 20 }]}>
+                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                                <Text style={{ fontSize: 18, fontWeight: 'bold', color: '#0f172a' }}>🏷️ Categoría del Producto</Text>
+                                <Pressable onPress={() => setCategoryPickerProductId(null)} style={{ padding: 4 }}>
+                                    <FontAwesome name="times" size={18} color="#64748b" />
+                                </Pressable>
+                            </View>
+
+                            <Text style={{ fontSize: 12, color: '#64748b', marginBottom: 10 }}>
+                                Tocá una categoría para asignarla al instante:
+                            </Text>
+
+                            <ScrollView style={{ maxHeight: 220 }} showsVerticalScrollIndicator={false}>
+                                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 10 }}>
+                                    {categories.map(cat => {
+                                        const cColor = categoryColors[cat] || '#3b82f6';
+                                        const currentProd = products.find(p => p.id === categoryPickerProductId);
+                                        const isSelected = currentProd?.category === cat;
+                                        return (
+                                            <Pressable
+                                                key={cat}
+                                                onPress={() => {
+                                                    updateProduct(categoryPickerProductId, 'category', cat);
+                                                    setCategoryPickerProductId(null);
+                                                }}
+                                                style={{
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    gap: 6,
+                                                    paddingHorizontal: 12,
+                                                    paddingVertical: 8,
+                                                    borderRadius: 20,
+                                                    backgroundColor: isSelected ? cColor : cColor + '15',
+                                                    borderWidth: 1.5,
+                                                    borderColor: cColor
+                                                }}
+                                            >
+                                                <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: isSelected ? '#fff' : cColor }} />
+                                                <Text style={{ fontSize: 13, fontWeight: 'bold', color: isSelected ? '#fff' : cColor }}>
+                                                    {cat}
+                                                </Text>
+                                                {isSelected && <FontAwesome name="check" size={11} color="#fff" />}
+                                            </Pressable>
+                                        );
+                                    })}
+                                </View>
+                            </ScrollView>
+
+                            <View style={{ height: 1, backgroundColor: '#e2e8f0', marginVertical: 14 }} />
+
+                            <Text style={{ fontSize: 13, fontWeight: 'bold', color: '#334155', marginBottom: 8 }}>
+                                + Crear nueva categoría
+                            </Text>
+                            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center', marginBottom: 10 }}>
+                                <TextInput
+                                    style={[styles.input, { flex: 1, fontSize: 16, backgroundColor: '#fff', borderColor: '#cbd5e1' }]}
+                                    placeholder="Nombre (ej: Bebidas)..."
+                                    value={quickNewCatName}
+                                    onChangeText={setQuickNewCatName}
+                                />
+                                <Pressable
+                                    style={{
+                                        backgroundColor: quickNewCatName.trim() ? '#10b981' : '#94a3b8',
+                                        paddingHorizontal: 14,
+                                        paddingVertical: 10,
+                                        borderRadius: 8
+                                    }}
+                                    disabled={!quickNewCatName.trim()}
+                                    onPress={() => {
+                                        const clean = quickNewCatName.trim();
+                                        if (!clean) return;
+                                        if (!categories.includes(clean)) {
+                                            setCategories([...categories, clean]);
+                                            setCategoryColors({ ...categoryColors, [clean]: quickNewCatColor });
+                                        }
+                                        updateProduct(categoryPickerProductId, 'category', clean);
+                                        setQuickNewCatName('');
+                                        setCategoryPickerProductId(null);
+                                        showToast('Categoría "' + clean + '" asignada');
+                                    }}
+                                >
+                                    <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 13 }}>Crear y Asignar</Text>
+                                </Pressable>
+                            </View>
+
+                            <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                                <Text style={{ fontSize: 11, color: '#64748b' }}>Color:</Text>
+                                {['#ef4444', '#f97316', '#eab308', '#10b981', '#0284c7', '#8b5cf6', '#ec4899', '#64748b'].map(col => (
+                                    <Pressable
+                                        key={col}
+                                        onPress={() => setQuickNewCatColor(col)}
+                                        style={{
+                                            width: 22,
+                                            height: 22,
+                                            borderRadius: 11,
+                                            backgroundColor: col,
+                                            borderWidth: quickNewCatColor === col ? 2.5 : 0,
+                                            borderColor: '#0f172a'
+                                        }}
+                                    />
+                                ))}
+                            </View>
+                        </View>
+                    </View>
+                </Modal>
+            )}
+
+            {/* TOAST NOTIFICATION BANNER */}
+            {toastMessage && (
+                <View style={{
+                    position: 'fixed' as any,
+                    top: 24,
+                    left: 0,
+                    right: 0,
+                    zIndex: 999999,
+                    alignItems: 'center',
+                    pointerEvents: 'box-none'
+                }}>
+                    <View style={{
+                        backgroundColor: '#10b981',
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 10,
+                        paddingVertical: 12,
+                        paddingHorizontal: 20,
+                        borderRadius: 30,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.25,
+                        shadowRadius: 8,
+                        elevation: 10,
+                        maxWidth: '90%'
+                    }}>
+                        <FontAwesome name="check-circle" size={18} color="#fff" />
+                        <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 15 }}>{toastMessage}</Text>
+                    </View>
+                </View>
+            )}
         </View>
     );
 }
@@ -5451,14 +5812,14 @@ const styles = StyleSheet.create({
     section: { backgroundColor: '#fff', borderRadius: 12, padding: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 10, width: '100%', maxWidth: '100%', overflow: 'hidden' as any },
     sectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 20, flexWrap: 'wrap' },
     sectionTitle: { fontSize: 20, fontWeight: 'bold', color: '#222', marginRight: 15 },
-    searchInput: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 8, flex: 1, minWidth: 200 },
+    searchInput: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, paddingHorizontal: 15, paddingVertical: 8, flex: 1, minWidth: 200, fontSize: 16 },
     addBtn: { backgroundColor: '#007AFF', paddingHorizontal: 15, paddingVertical: 10, borderRadius: 8 },
     btnText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
     row: { flexDirection: 'row', borderBottomWidth: 1, borderColor: '#eee', alignItems: 'center', paddingVertical: 12 },
     headerRow: { backgroundColor: '#fafafa', borderBottomWidth: 2, borderColor: '#ddd', paddingVertical: 16 },
     cell: { paddingHorizontal: 5 },
     headerText: { fontWeight: 'bold', color: '#555', fontSize: 13, textAlign: 'center' },
-    input: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#eee', borderRadius: 4, padding: 8, fontSize: 14, width: '100%' },
+    input: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#eee', borderRadius: 4, padding: 8, fontSize: 16, width: '100%' },
     webSelect: { backgroundColor: '#f9f9f9', borderWidth: 1, borderColor: '#eee', borderRadius: 4, padding: 8, fontSize: 14, width: '100%', outline: 'none' },
 
     modalBg: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
@@ -5480,7 +5841,7 @@ const styles = StyleSheet.create({
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
     modalContent: { backgroundColor: '#fff', borderRadius: 16, padding: 25, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10, elevation: 5 },
     modalLabel: { fontSize: 14, fontWeight: 'bold', color: '#444', marginBottom: 5, marginTop: 10 },
-    modalInput: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, backgroundColor: '#f9f9f9', marginBottom: 15, fontSize: 15 },
+    modalInput: { borderWidth: 1, borderColor: '#ccc', borderRadius: 8, padding: 10, backgroundColor: '#f9f9f9', marginBottom: 15, fontSize: 16 },
     modalBtnCancel: { paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#eee', borderRadius: 8 },
     modalBtnTextCancel: { fontWeight: 'bold', color: '#555' },
     modalBtnConfirm: { paddingHorizontal: 15, paddingVertical: 10, backgroundColor: '#FF3B30', borderRadius: 8 },
