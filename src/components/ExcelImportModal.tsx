@@ -59,17 +59,42 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                         ? normalizeName(DEFAULT_ROCIO_ALIASES[normRaw] || DEFAULT_ROCIO_ALIASES[strippedRaw]) 
                         : '';
 
-                    const matched = existingProducts.find(p => {
+                    const checkMatch = (p: Product, matchCategoryStrict: boolean) => {
                         const normPName = normalizeName(p.name);
                         const normMapping = p.excelMappingName ? normalizeName(p.excelMappingName) : '';
                         const strippedPName = stripQuantitiesFromName(p.name);
+                        const iCat = normalizeName(item.category || '');
+                        const pCat = normalizeName(p.category || '');
                         
-                        return normPName === normRaw || 
+                        let nameMatches = normPName === normRaw || 
                                (normMapping !== '' && normMapping === normRaw) ||
                                (defaultAliasMatch !== '' && normPName === defaultAliasMatch) ||
                                (strippedRaw !== '' && (normPName === strippedRaw || strippedPName === strippedRaw)) ||
                                (defaultAliasMatch !== '' && strippedPName === defaultAliasMatch);
-                    });
+
+                        // Si en el Excel dice "bola de lomo" o "cuadrada" en el bloque de Cerdo, asociarlo a "Bola de Lomo de Cerdo"
+                        if (!nameMatches && iCat.includes('cerdo') && pCat.includes('cerdo')) {
+                            const withoutCerdo = normPName.replace(/\b(de\s+)?cerdo\b/g, '').trim();
+                            if (withoutCerdo === normRaw || withoutCerdo === strippedRaw) {
+                                nameMatches = true;
+                            }
+                        }
+                        
+                        if (!nameMatches) return false;
+                        if (!matchCategoryStrict) return true;
+
+                        // Verificar afinidad de categoría para evitar falsos positivos
+                        if (iCat && pCat) {
+                            if (iCat.includes('cerdo') && pCat.includes('cerdo')) return true;
+                            if (iCat.includes('vacun') && pCat.includes('vacun')) return true;
+                            if (iCat.includes('pollo') && pCat.includes('pollo')) return true;
+                            if (iCat.includes('embutid') && pCat.includes('embutid')) return true;
+                            if (iCat.includes('achura') && pCat.includes('achura')) return true;
+                        }
+                        return false;
+                    };
+
+                    const matched = existingProducts.find(p => checkMatch(p, true)) || existingProducts.find(p => checkMatch(p, false));
 
                     return {
                         item,

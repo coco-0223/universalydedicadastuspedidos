@@ -137,7 +137,16 @@ export const parseRocioExcelRows = (rows: any[][], options: ExcelParseOptions = 
 
             // Ignorar encabezados dentro del bloque
             const norm = normalizeName(rawName);
-            if (norm === 'el kg' || norm === 'por pieza' || norm.includes('oferta exclusiva')) continue;
+            if (
+                norm === 'el kg' || 
+                norm === 'por pieza' || 
+                norm.includes('oferta exclusiva') ||
+                norm === 'vacuno' ||
+                norm === 'embutidos' ||
+                norm === 'cerdo' ||
+                norm === 'pollo' ||
+                norm === 'achuras'
+            ) continue;
 
             const price = parseExcelPrice(priceVal);
             if (price <= 0) continue;
@@ -193,20 +202,23 @@ export const parseRocioExcelRows = (rows: any[][], options: ExcelParseOptions = 
     }
 
     // 2. POLLO / VACUNO / EMBUTIDOS (Otras Columnas)
-    // Col C (2) & F (5): Vacuno Principal (Bola de lomo, Cuadrada, Nalga, Peceto...)
-    processColumnPair(2, 5, 'Vacuno');
+    // Col E (4) & F (5): Vacuno Principal (Bola de lomo, Cuadrada, Nalga, Peceto...)
+    processColumnPair(4, 5, 'Vacuno');
 
-    // Col G (6) & I (8): Embutidos (Chorizo mezcla, puro cerdo, morcilla...)
-    processColumnPair(6, 8, 'Embutidos');
+    // Col H (7) & I (8): Embutidos (Chorizo mezcla, puro cerdo, morcilla...)
+    processColumnPair(7, 8, 'Embutidos');
 
-    // Col J (9) & L (11): Cerdo (Milanesas / Cortes especiales)
-    processColumnPair(9, 11, 'Cerdo (Milanesas)');
+    // Col K (10) & L (11): Cerdo (Milanesas / Cortes especiales)
+    processColumnPair(10, 11, 'Cerdo (Milanesas)');
 
-    // Col M (12) & P (15): Cerdo (Cortes Normales)
-    processColumnPair(12, 15, 'Cerdo');
+    // Col O (14) & P (15): Cerdo (Cortes Normales)
+    processColumnPair(14, 15, 'Cerdo');
 
-    // Col Q (16) & S (18) o T (19): Achuras & Pollo
-    processColumnPair(16, 18, 'Achuras');
+    // Col R (17) & S (18): Pollo
+    processColumnPair(17, 18, 'Pollo');
+
+    // Col U (20) & V (21): Achuras
+    processColumnPair(20, 21, 'Achuras');
 
     // REGLA: VACUNO MAYORISTA (Col AH=33 & AI=34). Ignorar AF-AG (31-32)
     processColumnPair(33, 34, 'Vacuno Mayorista');
