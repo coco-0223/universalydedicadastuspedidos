@@ -46,7 +46,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                 const buffer = e.target?.result as ArrayBuffer;
                 const rows = getExcelRows(buffer);
                 setRawRows(rows);
+                console.log("📄 [Excel Import] Archivo cargado:", file.name, "| Total filas:", rows.length);
                 const items = parseRocioExcelRows(rows, { treatColABAsCashOffers });
+                console.log("🥩 [Excel Import] Ítems extraídos del Excel:", items.length, items);
                 setParsedItems(items);
 
                 // Auto-resolve matches
@@ -316,7 +318,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                                                         .filter(p => !searchQueries[idx] || p.name.toLowerCase().includes(searchQueries[idx].toLowerCase()))
                                                         .map(p => (
                                                         <option key={p.id} value={p.id}>
-                                                            {p.name} ({p.category}) - ${p.price}
+                                                            {p.name} ({p.category}) [Actual en tienda: ${p.price}]
                                                         </option>
                                                     ))}
                                                 </optgroup>
