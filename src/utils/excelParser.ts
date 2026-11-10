@@ -3,14 +3,16 @@ import { Product } from '../types';
 
 export interface ParsedExcelItem {
     rawName: string;
+    cleanName?: string;
     category: string;
     price: number;
     isDailyOffer?: boolean;
     dailyOfferPrice?: number;
     dailyOfferMinQty?: number;
-    unitType?: 'kg' | 'unit';
+    unitType?: 'kg' | 'unit' | 'piece';
     matchedProductId?: string;
     action?: 'update' | 'create';
+    explicitUnit?: string;
 }
 
 export interface ExcelParseOptions {
@@ -28,6 +30,52 @@ export const normalizeName = (name: string): string => {
         .replace(/[\u0300-\u036f]/g, "")
         .replace(/\s+/g, " ")
         .trim();
+};
+
+/**
+ * Capitaliza automáticamente cada palabra excepto artículos y preposiciones.
+ * Elimina números seguidos de unidades (kg, g, l, ml, u) en el nombre del producto
+ * para mantener el título limpio y sin duplicados por peso.
+ */
+export const cleanAndCapitalizeName = (name: string): string => {
+    if (!name) return '';
+    let cleaned = name.replace(/\bx\s*\d+(\.\d+)?\s*(kg|kilos|kilo|g|gr|gramos|l|litros|litro|ml|u|unidades|unidad|piezas|pieza)?\b/gi, '');
+    cleaned = cleaned.replace(/\b\d+(\.\d+)?\s*(kg|kilos|kilo|g|gr|gramos|l|litros|litro|ml|u|unidades|unidad|piezas|pieza)\b/gi, '');
+    cleaned = cleaned.replace(/\s+/g, ' ').trim();
+    cleaned = cleaned.replace(/\s+[xX]$/, '').trim();
+    
+    const minorWords = new Set(['de', 'del', 'la', 'las', 'el', 'los', 'y', 'e', 'o', 'u', 'en', 'a', 'con', 'sin', 'por', 'para', 'al']);
+    const words = cleaned.toLowerCase().split(' ');
+    const capitalized = words.map((w, idx) => {
+        if (!w) return '';
+        if (idx > 0 && minorWords.has(w)) return w;
+        return w.charAt(0).toUpperCase() + w.slice(1);
+    }).join(' ');
+    return capitalized || name.trim();
+};
+
+/**
+ * Detecta unidad (kg, unit, piece) y cantidad indicada en el texto o columna
+ */
+export const extractUnitTypeAndQty = (rawName: string, explicitUnit?: string): { unitType: 'kg' | 'unit' | 'piece', qty: number } => {
+    let unitType: 'kg' | 'unit' | 'piece' = 'kg';
+    let qty = 0;
+    const normExp = (explicitUnit || '').toString().toLowerCase().trim();
+    
+    if (normExp.includes('piez')) unitType = 'piece';
+    else if (normExp.includes('u') || normExp.includes('unid') || normExp.includes('l') || normExp.includes('litr')) unitType = 'unit';
+    else if (normExp.includes('k') || normExp.includes('kg') || normExp.includes('gram')) unitType = 'kg';
+    else {
+        if (/\bpiezas?|pieza\b/i.test(rawName)) unitType = 'piece';
+        else if (/\bunidades?|unid|u|l|litros?|ml\b/i.test(rawName)) unitType = 'unit';
+        else if (/\bkilos?|kg|gramos?|g|gr\b/i.test(rawName)) unitType = 'kg';
+    }
+    
+    const qtyMatch = rawName.match(/(\d+(\.\d+)?)\s*(kg|kilos|kilo|g|gr|gramos|l|litros|litro|ml|u|unidades|unidad|piezas|pieza)/i) || rawName.match(/\bx\s*(\d+(\.\d+)?)/i);
+    if (qtyMatch) {
+        qty = parseFloat(qtyMatch[1]) || 0;
+    }
+    return { unitType, qty };
 };
 
 /**
@@ -87,7 +135,7 @@ export const stripQuantitiesFromName = (name: string): string => {
 };
 
 /**
- * Main parser for Rocio Carniceria Excel files
+ * Main parser for Excel files
  */
 export const getExcelRows = (fileBuffer: ArrayBuffer): any[][] => {
     const workbook = XLSX.read(new Uint8Array(fileBuffer), { type: 'array' });
@@ -106,11 +154,12 @@ export const parseRocioExcelRows = (rows: any[][], options: ExcelParseOptions = 
 
     const parsedItems: ParsedExcelItem[] = [];
 
-    // Helper to process a 2-column block (Name Col, Price Col)
+    // Helper to process a column block (Name Col, Price Col, optional Unit Col)
     const processColumnPair = (
         nameColIdx: number, 
         priceColIdx: number, 
         defaultCategory: string,
+        unitColIdx?: number,
         maxRow = rows.length,
         startRow = 1
     ) => {
@@ -120,6 +169,7 @@ export const parseRocioExcelRows = (rows: any[][], options: ExcelParseOptions = 
             
             const rawNameVal = row[nameColIdx];
             const priceVal = row[priceColIdx];
+            const explicitUnit = unitColIdx !== undefined && row[unitColIdx] ? row[unitColIdx].toString() : undefined;
             
             if (!rawNameVal) continue;
             const rawName = rawNameVal.toString().trim();
@@ -130,6 +180,9 @@ export const parseRocioExcelRows = (rows: any[][], options: ExcelParseOptions = 
             if (
                 norm === 'el kg' || 
                 norm === 'por pieza' || 
+                norm === 'producto' ||
+                norm === 'item' ||
+                norm === 'nombre' ||
                 norm.includes('oferta exclusiva') ||
                 norm === 'vacuno' ||
                 norm === 'embutidos' ||
@@ -141,18 +194,17 @@ export const parseRocioExcelRows = (rows: any[][], options: ExcelParseOptions = 
             const price = parseExcelPrice(priceVal);
             if (price <= 0) continue;
 
-            // Extraer posible cantidad si dice "2 kg", "x 3", etc.
-            let minQty = 0;
-            const qtyMatch = rawName.match(/(\d+)\s*(kg|kilos|u|unidades|x\d+)/i);
-            if (qtyMatch) {
-                minQty = parseInt(qtyMatch[1], 10) || 0;
-            }
+            const { unitType, qty } = extractUnitTypeAndQty(rawName, explicitUnit);
+            const cleanName = cleanAndCapitalizeName(rawName);
 
             parsedItems.push({
                 rawName,
+                cleanName,
                 category: defaultCategory,
                 price,
-                dailyOfferMinQty: minQty
+                dailyOfferMinQty: qty,
+                unitType,
+                explicitUnit
             });
         }
     };
@@ -174,46 +226,59 @@ export const parseRocioExcelRows = (rows: any[][], options: ExcelParseOptions = 
             const price = parseExcelPrice(priceVal);
             if (price <= 0) continue;
 
-            let minQty = 0;
-            const qtyMatch = rawName.match(/(\d+)\s*(kg|kilos|u|unidades|x\d+)/i);
-            if (qtyMatch) {
-                minQty = parseInt(qtyMatch[1], 10) || 0;
-            }
+            const { unitType, qty } = extractUnitTypeAndQty(rawName);
+            const cleanName = cleanAndCapitalizeName(rawName);
 
             parsedItems.push({
                 rawName,
-                category: 'General',
+                cleanName,
+                category: 'Ofertas del Día (Efectivo)',
                 price,
                 isDailyOffer: true,
                 dailyOfferPrice: price,
-                dailyOfferMinQty: minQty
+                dailyOfferMinQty: qty,
+                unitType
             });
         }
     }
 
-    // 2. POLLO / VACUNO / EMBUTIDOS (Otras Columnas)
-    // Col E (4) & F (5): Vacuno Principal (Bola de lomo, Cuadrada, Nalga, Peceto...)
-    processColumnPair(4, 5, 'Vacuno');
+    // 2. DETECCIÓN AUTOMÁTICA DE PLANTILLA DINÁMICA (Si la fila 0 o 1 tiene nombres de categoría personalizados)
+    const headerRow = rows[0] || [];
+    const subHeaderRow = rows[1] || [];
+    let isDynamicTemplate = false;
 
-    // Col H (7) & I (8): Embutidos (Chorizo mezcla, puro cerdo, morcilla...)
-    processColumnPair(7, 8, 'Embutidos');
+    // Buscar si hay bloques de 3 o 4 columnas creados con nuestra plantilla
+    for (let c = 3; c < headerRow.length; c += 4) {
+        const catName = (headerRow[c] || '').toString().trim();
+        if (catName && catName !== '' && (subHeaderRow[c] || '').toString().toLowerCase().includes('producto')) {
+            isDynamicTemplate = true;
+            processColumnPair(c, c + 1, catName, c + 2, rows.length, 2);
+        }
+    }
 
-    // Col K (10) & L (11): Cerdo (Milanesas / Cortes especiales)
-    processColumnPair(10, 11, 'Cerdo (Milanesas)');
+    // 3. SI NO ES PLANTILLA DINÁMICA DE 4 COLS, USAR MAPEO ESTÁNDAR (Rocío o 2-Columnas)
+    if (!isDynamicTemplate) {
+        // Col E (4) & F (5): Vacuno Principal (Bola de lomo, Cuadrada, Nalga, Peceto...)
+        processColumnPair(4, 5, 'Vacuno');
 
-    // Col O (14) & P (15): Cerdo (Cortes Normales)
-    processColumnPair(14, 15, 'Cerdo');
+        // Col H (7) & I (8): Embutidos (Chorizo mezcla, puro cerdo, morcilla...)
+        processColumnPair(7, 8, 'Embutidos');
 
-    // Col R (17) & S (18): Pollo
-    processColumnPair(17, 18, 'Pollo');
+        // Col K (10) & L (11): Cerdo (Milanesas / Cortes especiales)
+        processColumnPair(10, 11, 'Cerdo (Milanesas)');
 
-    // Col U (20) & V (21): Achuras
-    processColumnPair(20, 21, 'Achuras');
+        // Col O (14) & P (15): Cerdo (Cortes Normales)
+        processColumnPair(14, 15, 'Cerdo');
 
-    // REGLA: VACUNO MAYORISTA (Col AH=33 & AI=34). Ignorar AF-AG (31-32)
-    processColumnPair(33, 34, 'Vacuno Mayorista');
+        // Col R (17) & S (18): Pollo
+        processColumnPair(17, 18, 'Pollo');
 
-    // NOTA: CONGELADOS BAJALA (Cols V-W / 21-22) y columnas AJ a AS (35-44) son ignoradas por las reglas del negocio.
+        // Col U (20) & V (21): Achuras
+        processColumnPair(20, 21, 'Achuras');
+
+        // REGLA: VACUNO MAYORISTA (Col AH=33 & AI=34). Ignorar AF-AG (31-32)
+        processColumnPair(33, 34, 'Vacuno Mayorista');
+    }
 
     return parsedItems;
 };

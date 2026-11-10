@@ -6,6 +6,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { ImagePickerPortal } from '../../src/components/ImagePickerPortal';
 import { ExcelImportModal } from '../../src/components/ExcelImportModal';
+import { ExcelTemplateWizardModal } from '../../src/components/ExcelTemplateWizardModal';
 import { SuperadminRawExcelEditor } from '../../src/components/SuperadminRawExcelEditor';
 import { normalizeName, DEFAULT_ROCIO_ALIASES } from '../../src/utils/excelParser';
 import { useAppContext } from '../../src/context/AppContext';
@@ -233,6 +234,7 @@ export default function BusinessProductsScreen() {
     const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
     const [isSmartExcelModalOpen, setIsSmartExcelModalOpen] = useState(false);
+    const [isTemplateWizardOpen, setIsTemplateWizardOpen] = useState(false);
     const [isSuperadminRawExcelOpen, setIsSuperadminRawExcelOpen] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
@@ -5547,6 +5549,13 @@ export default function BusinessProductsScreen() {
                     </View>
                 </Modal>
             )}
+            
+            {/* EXCEL TEMPLATE WIZARD MODAL */}
+            <ExcelTemplateWizardModal
+                visible={isTemplateWizardOpen}
+                onClose={() => setIsTemplateWizardOpen(false)}
+                existingCategories={categories}
+            />
             {/* SMART EXCEL IMPORT MODAL */}
             <ExcelImportModal
                 visible={isSmartExcelModalOpen}
