@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Pressable, StyleSheet, ActivityIndicator, Platform, useWindowDimensions, Modal, ScrollView } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator, Platform, useWindowDimensions, Modal, ScrollView, Alert } from 'react-native';
 import { Slot, useRouter, usePathname, Redirect } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -7,12 +7,16 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../../src/config/firebase';
 import { useAppContext } from '../../src/context/AppContext';
 import { TutorialOverlay } from '../../src/components/TutorialOverlay';
+import { getOrGenerateAccessPin } from '../../src/utils/prospectManager';
+import { ExcelTemplateWizardModal } from '../../src/components/ExcelTemplateWizardModal';
 
 export default function BusinessLayout() {
-    const { user, setUser, isLoading, businessProfile } = useAppContext();
+    const { user, setUser, isLoading, businessProfile, settings } = useAppContext();
     const router = useRouter();
     const [forceShowTutorial, setForceShowTutorial] = useState(false);
     const [showMoreModal, setShowMoreModal] = useState(false);
+    const [showDemoToolsModal, setShowDemoToolsModal] = useState(false);
+    const [showExcelWizardDirect, setShowExcelWizardDirect] = useState(false);
     const pathname = usePathname();
     const { width } = useWindowDimensions();
     const isMobile = width < 768;
@@ -68,6 +72,37 @@ export default function BusinessLayout() {
         router.replace('/(admin)/dashboard');
         if (typeof window !== 'undefined') window.location.href = '/dashboard';
     };
+
+    const handleResetDemo = async () => {
+        try {
+            if (Platform.OS === 'web') {
+                const conf = window.confirm('¿Reiniciar la demo?\n\nEsto limpiará la sesión y el dispositivo de prueba actual para que puedas empezar de cero desde la pantalla de bienvenida / demo.');
+                if (!conf) return;
+            }
+            await AsyncStorage.removeItem('tp_trial_created');
+            await AsyncStorage.removeItem('tp_device_key');
+            if (businessProfile?.id) {
+                await AsyncStorage.removeItem('tp_device_key_' + businessProfile.id);
+                await AsyncStorage.removeItem('tp_owner_email_' + businessProfile.id);
+            }
+            await AsyncStorage.removeItem('tp_trial_business_id');
+            await AsyncStorage.removeItem('businessProfile');
+            await AsyncStorage.removeItem('user');
+            try {
+                await signOut(auth);
+            } catch (e) {}
+            setUser(null);
+            setShowDemoToolsModal(false);
+            router.replace('/iniciar-demo');
+            if (Platform.OS === 'web' && typeof window !== 'undefined') {
+                window.location.href = '/iniciar-demo';
+            }
+        } catch (e) {
+            console.error('Error al reiniciar demo:', e);
+        }
+    };
+
+    const currentAccessPin = getOrGenerateAccessPin(businessProfile?.id);
 
     return (
         <View style={[styles.container, isMobile && styles.containerMobile]}>
@@ -323,6 +358,202 @@ export default function BusinessLayout() {
                     </Pressable>
                 </Modal>
             )}
+            {/* Floating Demo Navigator Button (Mobile & Desktop Demo) */}
+            {isMobile && (
+                <Pressable
+                    style={styles.demoFloatingBtn}
+                    onPress={() => setShowDemoToolsModal(true)}
+                >
+                    <View style={styles.demoFloatingInner}>
+                        <FontAwesome name="flask" size={15} color="#ffffff" />
+                        <Text style={styles.demoFloatingText}>Demo</Text>
+                    </View>
+                </Pressable>
+            )}
+
+            {/* Modal de Instancias de Demo y Acceso Rápido */}
+            <Modal
+                visible={showDemoToolsModal}
+                transparent
+                animationType="slide"
+                onRequestClose={() => setShowDemoToolsModal(false)}
+            >
+                <Pressable style={styles.sheetOverlay} onPress={() => setShowDemoToolsModal(false)}>
+                    <Pressable style={styles.sheetContent} onPress={e => e.stopPropagation()}>
+                        <View style={styles.sheetHeader}>
+                            <View style={{ flex: 1 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                    <Text style={styles.sheetTitle}>🧪 Centro de Pruebas Demo</Text>
+                                    <View style={{ backgroundColor: '#e0e7ff', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 }}>
+                                        <Text style={{ fontSize: 10, fontWeight: '800', color: '#4338ca' }}>NAVEGADOR</Text>
+                                    </View>
+                                </View>
+                                <Text style={styles.sheetSubtitle}>
+                                    Negocio actual: <Text style={{ fontWeight: '700', color: '#0f172a' }}>{businessProfile?.name || 'Demo'}</Text> ({businessProfile?.id})
+                                </Text>
+                            </View>
+                            <Pressable style={styles.sheetCloseBtn} onPress={() => setShowDemoToolsModal(false)}>
+                                <FontAwesome name="times" size={18} color="#64748b" />
+                            </Pressable>
+                        </View>
+
+                        {/* PIN Banner */}
+                        <View style={styles.demoPinBanner}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={{ fontSize: 11, color: '#0369a1', fontWeight: '600' }}>🔑 Clave de Acceso de esta Demo:</Text>
+                                <Text style={{ fontSize: 16, fontWeight: '900', color: '#0284c7', letterSpacing: 1, marginTop: 2 }}>
+                                    {currentAccessPin}
+                                </Text>
+                            </View>
+                            <Pressable
+                                style={styles.demoPinCopyBtn}
+                                onPress={() => {
+                                    if (Platform.OS === 'web' && typeof navigator !== 'undefined') {
+                                        navigator.clipboard.writeText(currentAccessPin);
+                                        alert('¡Clave copiada al portapapeles: ' + currentAccessPin + '!');
+                                    } else {
+                                        Alert.alert('Copiado', 'Clave copiada: ' + currentAccessPin);
+                                    }
+                                }}
+                            >
+                                <FontAwesome name="copy" size={13} color="#0284c7" />
+                                <Text style={{ fontSize: 12, fontWeight: '700', color: '#0284c7' }}>Copiar</Text>
+                            </Pressable>
+                        </View>
+
+                        <ScrollView style={{ maxHeight: 440 }} showsVerticalScrollIndicator={false}>
+                            {/* Instancia 1: Tutorial de Excel */}
+                            <Pressable
+                                style={styles.sheetItem}
+                                onPress={() => {
+                                    setShowDemoToolsModal(false);
+                                    setShowExcelWizardDirect(true);
+                                }}
+                            >
+                                <View style={[styles.sheetIconBox, { backgroundColor: '#dcfce7' }]}>
+                                    <FontAwesome name="file-excel-o" size={18} color="#16a34a" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Text style={styles.sheetItemTitle}>Ver Tutorial y Plantilla Excel</Text>
+                                        <View style={{ backgroundColor: '#22c55e', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10 }}>
+                                            <Text style={{ fontSize: 9, fontWeight: '800', color: '#fff' }}>NUEVO</Text>
+                                        </View>
+                                    </View>
+                                    <Text style={styles.sheetItemDesc}>
+                                        Abrir el generador inteligente con tus categorías personalizadas y guía visual
+                                    </Text>
+                                </View>
+                                <FontAwesome name="chevron-right" size={14} color="#cbd5e1" />
+                            </Pressable>
+
+                            {/* Instancia 2: Importar Excel Inteligente */}
+                            <Pressable
+                                style={styles.sheetItem}
+                                onPress={() => {
+                                    setShowDemoToolsModal(false);
+                                    router.push('/(business)/products?openSmartImport=true' as any);
+                                }}
+                            >
+                                <View style={[styles.sheetIconBox, { backgroundColor: '#e0f2fe' }]}>
+                                    <FontAwesome name="upload" size={18} color="#0284c7" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.sheetItemTitle}>Carga Inteligente de Excel</Text>
+                                    <Text style={styles.sheetItemDesc}>
+                                        Subir archivo Excel con detección de unidades y unificación por volumen
+                                    </Text>
+                                </View>
+                                <FontAwesome name="chevron-right" size={14} color="#cbd5e1" />
+                            </Pressable>
+
+                            {/* Instancia 3: Catálogo y Precios por Volumen */}
+                            <Pressable
+                                style={styles.sheetItem}
+                                onPress={() => {
+                                    setShowDemoToolsModal(false);
+                                    router.push('/(business)/products');
+                                }}
+                            >
+                                <View style={[styles.sheetIconBox, { backgroundColor: '#fef3c7' }]}>
+                                    <FontAwesome name="tags" size={18} color="#d97706" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.sheetItemTitle}>Catálogo & Precios x Volumen</Text>
+                                    <Text style={styles.sheetItemDesc}>
+                                        Configuración de combos, categorías editables y guardado con tick
+                                    </Text>
+                                </View>
+                                <FontAwesome name="chevron-right" size={14} color="#cbd5e1" />
+                            </Pressable>
+
+                            {/* Instancia 4: Ver Tienda como Cliente */}
+                            <Pressable
+                                style={styles.sheetItem}
+                                onPress={() => {
+                                    setShowDemoToolsModal(false);
+                                    router.push('/(business)/preview');
+                                }}
+                            >
+                                <View style={[styles.sheetIconBox, { backgroundColor: '#ede9fe' }]}>
+                                    <FontAwesome name="mobile" size={20} color="#7c3aed" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.sheetItemTitle}>Ver Tienda de Clientes</Text>
+                                    <Text style={styles.sheetItemDesc}>
+                                        Simular la experiencia de compra en el catálogo online
+                                    </Text>
+                                </View>
+                                <FontAwesome name="chevron-right" size={14} color="#cbd5e1" />
+                            </Pressable>
+
+                            {/* Instancia 5: Tutorial de Pasos */}
+                            <Pressable
+                                style={styles.sheetItem}
+                                onPress={() => {
+                                    setShowDemoToolsModal(false);
+                                    setForceShowTutorial(true);
+                                }}
+                            >
+                                <View style={[styles.sheetIconBox, { backgroundColor: '#f1f5f9' }]}>
+                                    <FontAwesome name="question-circle" size={18} color="#475569" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.sheetItemTitle}>Ver Tour Guiado Completo</Text>
+                                    <Text style={styles.sheetItemDesc}>
+                                        Repetir el tutorial explicativo de las secciones del panel
+                                    </Text>
+                                </View>
+                                <FontAwesome name="chevron-right" size={14} color="#cbd5e1" />
+                            </Pressable>
+
+                            {/* Instancia 6: Reiniciar Demo desde Cero */}
+                            <Pressable
+                                style={[styles.sheetItem, { borderBottomWidth: 0, marginTop: 12, backgroundColor: '#fff1f2', borderRadius: 12, paddingHorizontal: 12 }]}
+                                onPress={handleResetDemo}
+                            >
+                                <View style={[styles.sheetIconBox, { backgroundColor: '#fecdd3' }]}>
+                                    <FontAwesome name="refresh" size={18} color="#e11d48" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={[styles.sheetItemTitle, { color: '#e11d48' }]}>Empezar Demo de Nuevo</Text>
+                                    <Text style={styles.sheetItemDesc}>
+                                        Limpiar dispositivo y volver a la pantalla de inicio de prueba
+                                    </Text>
+                                </View>
+                                <FontAwesome name="chevron-right" size={14} color="#f43f5e" />
+                            </Pressable>
+                        </ScrollView>
+                    </Pressable>
+                </Pressable>
+            </Modal>
+
+            {/* Direct Excel Wizard Modal from Layout */}
+            <ExcelTemplateWizardModal
+                visible={showExcelWizardDirect}
+                onClose={() => setShowExcelWizardDirect(false)}
+                existingCategories={settings.categories || ['Vacuno', 'Pollo', 'Cerdo', 'Embutidos']}
+            />
         </View>
     );
 }
@@ -498,6 +729,55 @@ const styles = StyleSheet.create({
         fontSize: 12,
         color: '#64748b',
         marginTop: 2,
+    },
+    demoFloatingBtn: {
+        position: 'absolute',
+        bottom: 74,
+        left: 14,
+        zIndex: 9999,
+        elevation: 10,
+        shadowColor: '#4f46e5',
+        shadowOffset: { width: 0, height: 3 },
+        shadowOpacity: 0.35,
+        shadowRadius: 5,
+    },
+    demoFloatingInner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: '#4f46e5',
+        paddingHorizontal: 13,
+        paddingVertical: 8,
+        borderRadius: 24,
+        borderWidth: 1.5,
+        borderColor: '#a5b4fc',
+    },
+    demoFloatingText: {
+        color: '#ffffff',
+        fontSize: 12,
+        fontWeight: '800',
+        letterSpacing: 0.5,
+    },
+    demoPinBanner: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: '#f0f9ff',
+        borderWidth: 1,
+        borderColor: '#bae6fd',
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 10,
+        marginBottom: 14,
+    },
+    demoPinCopyBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        backgroundColor: '#e0f2fe',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 8,
     },
 });
 

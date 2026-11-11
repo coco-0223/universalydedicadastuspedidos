@@ -3,6 +3,7 @@ import { IS_DEDICATED_APP } from '../../src/data/mockData';
 import { FontAwesome } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { useEffect, useMemo, useState } from 'react';
+import { useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Alert, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { ImagePickerPortal } from '../../src/components/ImagePickerPortal';
 import { ExcelImportModal } from '../../src/components/ExcelImportModal';
@@ -137,6 +138,7 @@ export default function BusinessProductsScreen() {
     const { products, setProducts, settings, setSettings, offers, setOffers, businessProfile, user } = useAppContext();
     const { width } = useWindowDimensions();
     const isMobile = width < 768;
+    const params = useLocalSearchParams();
     const [showExtraActions, setShowExtraActions] = useState(false);
     const [showFiltersExpanded, setShowFiltersExpanded] = useState(false);
 
@@ -235,6 +237,15 @@ export default function BusinessProductsScreen() {
     const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
     const [isSmartExcelModalOpen, setIsSmartExcelModalOpen] = useState(false);
     const [isTemplateWizardOpen, setIsTemplateWizardOpen] = useState(false);
+
+    useEffect(() => {
+        if (params?.openWizard === 'true' || params?.wizard === 'true') {
+            setIsTemplateWizardOpen(true);
+        }
+        if (params?.openSmartImport === 'true' || params?.smartImport === 'true') {
+            setIsSmartExcelModalOpen(true);
+        }
+    }, [params?.openWizard, params?.wizard, params?.openSmartImport, params?.smartImport]);
     const [isSuperadminRawExcelOpen, setIsSuperadminRawExcelOpen] = useState(false);
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
