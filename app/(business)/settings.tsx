@@ -43,6 +43,7 @@ export default function BusinessSettingsScreen() {
     // Purchase restrictions
     const [purchaseRestricted, setPurchaseRestricted] = useState(settings.purchaseRestrictions?.active || false);
     const [showPricesWhenRestricted, setShowPricesWhenRestricted] = useState(settings.purchaseRestrictions?.showPricesWhenRestricted || false);
+    const [hidePricesGlobal, setHidePricesGlobal] = useState(settings.displaySettings?.hidePricesGlobal || false);
     const [restrictionSchedule, setRestrictionSchedule] = useState<Record<number, { startTime: string, endTime: string }[]>>(settings.purchaseRestrictions?.schedule || {0:[],1:[],2:[],3:[],4:[],5:[],6:[]});
     const [orderStatuses, setOrderStatuses] = useState(settings.orderStatuses || []);
     const [showOrderStatusToClients, setShowOrderStatusToClients] = useState(settings.displaySettings.showOrderStatusToClients ?? true);
@@ -103,6 +104,7 @@ export default function BusinessSettingsScreen() {
         setPaymentMethods(settings.paymentMethods || ['Efectivo']);
         setPurchaseRestricted(settings.purchaseRestrictions?.active || false);
         setShowPricesWhenRestricted(settings.purchaseRestrictions?.showPricesWhenRestricted || false);
+        setHidePricesGlobal(settings.displaySettings?.hidePricesGlobal || false);
         setRestrictionSchedule(settings.purchaseRestrictions?.schedule || {0:[],1:[],2:[],3:[],4:[],5:[],6:[]});
         setOrderStatuses(settings.orderStatuses || []);
         setShowOrderStatusToClients(settings.displaySettings.showOrderStatusToClients ?? true);
@@ -137,7 +139,8 @@ export default function BusinessSettingsScreen() {
             orderStatuses,
             displaySettings: {
                 ...settings.displaySettings,
-                offersView, productsView, showOfferDiscountPercentage, showOffersOnTop, showOrderStatusToClients
+                offersView, productsView, showOfferDiscountPercentage, showOffersOnTop, showOrderStatusToClients,
+                hidePricesGlobal
             },
             nativeAppUrl,
             deliveryScheduling: { active: deliveryScheduling },
@@ -156,7 +159,7 @@ export default function BusinessSettingsScreen() {
             branches: settings.branches || [],
             paymentMethods: settings.paymentMethods || [],
             orderStatuses: settings.orderStatuses || [],
-            displaySettings: settings.displaySettings || { offersView: 'cards', productsView: 'list', showOfferDiscountPercentage: true },
+            displaySettings: settings.displaySettings || { offersView: 'cards', productsView: 'list', showOfferDiscountPercentage: true, hidePricesGlobal: false },
             nativeAppUrl: settings.nativeAppUrl || '',
             deliveryScheduling: settings.deliveryScheduling || { active: true },
             pickupScheduling: settings.pickupScheduling || { active: true, disabledBranches: [] },
@@ -169,7 +172,7 @@ export default function BusinessSettingsScreen() {
         standardCost, freeDeliveryThreshold, deliveryDays,
         purchaseRestricted, showPricesWhenRestricted, restrictionSchedule,
         branches, paymentMethods, orderStatuses,
-        offersView, productsView, showOfferDiscountPercentage, showOffersOnTop, showOrderStatusToClients,
+        offersView, productsView, showOfferDiscountPercentage, showOffersOnTop, showOrderStatusToClients, hidePricesGlobal,
         nativeAppUrl, settings, currency, isFoodBusiness
     ]);
 
@@ -203,7 +206,8 @@ export default function BusinessSettingsScreen() {
                 productsView: productsView as 'cards' | 'list',
                 showOfferDiscountPercentage,
                 showOffersOnTop,
-                showOrderStatusToClients
+                showOrderStatusToClients,
+                hidePricesGlobal
             },
             nativeAppUrl: nativeAppUrl.trim() || undefined,
             deliveryScheduling: { active: deliveryScheduling },
@@ -529,7 +533,16 @@ export default function BusinessSettingsScreen() {
 
                     {/* CARD: BLOQUEO COMPRAS */}
                     <View style={[styles.card, { width: isDesktop ? '49%' : '100%', backgroundColor: '#fff1f2' }]}>
-                        <Text style={[styles.cardTitle, { color: '#be123c' }]}>🚫 Bloqueo de Compras</Text>
+                        <Text style={[styles.cardTitle, { color: '#be123c' }]}>🚫 Bloqueo de Compras y Visibilidad</Text>
+                        
+                        <View style={[styles.row, { paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#fecdd3', marginBottom: 12 }]}>
+                            <View style={{ flex: 1, paddingRight: 10 }}>
+                                <Text style={[styles.label, { color: '#9f1239', fontWeight: 'bold' }]}>👁️ Ocultar Precios (de todo)</Text>
+                                <Text style={styles.hint}>Oculta todos los precios, importes de ofertas y leyendas de descuento por cantidad en la tienda.</Text>
+                            </View>
+                            <Switch trackColor={{ false: '#d1d5db', true: '#be123c' }} value={hidePricesGlobal} onValueChange={setHidePricesGlobal} />
+                        </View>
+
                         <View style={styles.row}>
                             <Text style={styles.label}>Activar Bloqueo de Compras</Text>
                             <Switch trackColor={{ false: '#d1d5db', true: '#ef4444' }} value={purchaseRestricted} onValueChange={setPurchaseRestricted} />

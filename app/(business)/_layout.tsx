@@ -9,14 +9,16 @@ import { useAppContext } from '../../src/context/AppContext';
 import { TutorialOverlay } from '../../src/components/TutorialOverlay';
 import { getOrGenerateAccessPin } from '../../src/utils/prospectManager';
 import { ExcelTemplateWizardModal } from '../../src/components/ExcelTemplateWizardModal';
+import { saveBusinessSettings } from '../../src/services/businessService';
 
 export default function BusinessLayout() {
-    const { user, setUser, isLoading, businessProfile, settings } = useAppContext();
+    const { user, setUser, isLoading, businessProfile, settings, setSettings } = useAppContext();
     const router = useRouter();
     const [forceShowTutorial, setForceShowTutorial] = useState(false);
     const [showMoreModal, setShowMoreModal] = useState(false);
     const [showDemoToolsModal, setShowDemoToolsModal] = useState(false);
     const [showExcelWizardDirect, setShowExcelWizardDirect] = useState(false);
+    const [isTogglingPrices, setIsTogglingPrices] = useState(false);
     const pathname = usePathname();
     const { width } = useWindowDimensions();
     const isMobile = width < 768;
@@ -485,6 +487,60 @@ export default function BusinessLayout() {
                                     </Text>
                                 </View>
                                 <FontAwesome name="chevron-right" size={14} color="#cbd5e1" />
+                            </Pressable>
+
+                            {/* Toggle Ocultar Precios (de todo) */}
+                            <Pressable
+                                style={[styles.sheetItem, { backgroundColor: settings.displaySettings?.hidePricesGlobal ? '#fef2f2' : '#f8fafc', borderRadius: 12, paddingHorizontal: 12, marginVertical: 4 }]}
+                                disabled={isTogglingPrices}
+                                onPress={async () => {
+                                    if (isTogglingPrices) return;
+                                    setIsTogglingPrices(true);
+                                    try {
+                                        const currentVal = !!settings.displaySettings?.hidePricesGlobal;
+                                        const newVal = !currentVal;
+                                        const updatedSettings = {
+                                            ...settings,
+                                            displaySettings: {
+                                                ...settings.displaySettings,
+                                                hidePricesGlobal: newVal
+                                            }
+                                        };
+                                        await saveBusinessSettings(businessProfile.id, updatedSettings);
+                                        setSettings(updatedSettings);
+                                        if (Platform.OS === 'web') {
+                                            alert(newVal ? '👁️ Precios Ocultos activado (se ocultaron precios y descuentos por cantidad en la tienda).' : '👁️ Precios Visibles activado.');
+                                        } else {
+                                            Alert.alert('Precios', newVal ? 'Precios ocultados en la tienda' : 'Precios visibles');
+                                        }
+                                    } catch (err) {
+                                        console.error('Error toggling hidePrices:', err);
+                                    } finally {
+                                        setIsTogglingPrices(false);
+                                    }
+                                }}
+                            >
+                                <View style={[styles.sheetIconBox, { backgroundColor: settings.displaySettings?.hidePricesGlobal ? '#fee2e2' : '#e2e8f0' }]}>
+                                    <FontAwesome name={settings.displaySettings?.hidePricesGlobal ? "eye-slash" : "eye"} size={18} color={settings.displaySettings?.hidePricesGlobal ? "#dc2626" : "#475569"} />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                        <Text style={[styles.sheetItemTitle, settings.displaySettings?.hidePricesGlobal && { color: '#dc2626' }]}>
+                                            {settings.displaySettings?.hidePricesGlobal ? 'Precios: OCULTOS (Activo)' : 'Precios: VISIBLES'}
+                                        </Text>
+                                        <View style={{ backgroundColor: settings.displaySettings?.hidePricesGlobal ? '#ef4444' : '#64748b', paddingHorizontal: 6, paddingVertical: 1, borderRadius: 10 }}>
+                                            <Text style={{ fontSize: 9, fontWeight: '800', color: '#fff' }}>
+                                                {settings.displaySettings?.hidePricesGlobal ? 'OCULTO' : 'TOCAR PARA OCULTAR'}
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <Text style={styles.sheetItemDesc}>
+                                        {settings.displaySettings?.hidePricesGlobal 
+                                            ? 'Precios y leyendas de descuento por cantidad no se ven en la tienda' 
+                                            : 'Tocar para ocultar precios y leyendas por cantidad de todo el catálogo'}
+                                    </Text>
+                                </View>
+                                <FontAwesome name="toggle-on" size={20} color={settings.displaySettings?.hidePricesGlobal ? "#dc2626" : "#cbd5e1"} />
                             </Pressable>
 
                             {/* Instancia 4: Ver Tienda como Cliente */}

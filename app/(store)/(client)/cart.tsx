@@ -175,7 +175,7 @@ const CartItemRow = ({ item, updateQuantity, setCart, cart, step, minWeight, sty
             <Text style={styles.itemName}>{item.product.name}</Text>
             
             {/* Show all quantity discounts and cash discount */}
-            {!settings?.isFoodBusiness && (
+            {!settings?.isFoodBusiness && !settings?.displaySettings?.hidePricesGlobal && (
                 <View style={{ marginTop: 4, marginBottom: 6, gap: 3 }}>
                     {/* Oferta en efectivo (daily offer) */}
                     {item.product.isDailyOffer && item.product.dailyOfferPrice && (() => {
@@ -214,7 +214,7 @@ const CartItemRow = ({ item, updateQuantity, setCart, cart, step, minWeight, sty
                 </View>
             )}
             
-            {!settings?.isFoodBusiness && nextTier && (
+            {!settings?.isFoodBusiness && !settings?.displaySettings?.hidePricesGlobal && nextTier && (
                 <View style={{ marginTop: 4 }}>
                     <Text style={{ fontSize: 11, color: '#666', marginBottom: 4 }}>
                         Añadí {parseFloat((nextTier.quantity - item.quantity).toFixed(2))} más para pagar ${(nextTier.price / nextTier.quantity).toFixed(2)} c/u

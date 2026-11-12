@@ -413,6 +413,7 @@ export interface BusinessSettings {
         showOfferDiscountPercentage: boolean;
         showOffersOnTop?: boolean;
         showOrderStatusToClients?: boolean;
+        hidePricesGlobal?: boolean; // Ocultar precios y leyendas de volumen en toda la app cliente
     };
 
     milestoneGroups: MilestoneGroup[];

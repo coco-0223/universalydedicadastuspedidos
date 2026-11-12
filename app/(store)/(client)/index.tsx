@@ -393,7 +393,7 @@ export default function ClientShopScreen() {
 
     const isRestricted = restrictionData.restricted;
 
-    const hidePrices = isRestricted && !settings.purchaseRestrictions?.showPricesWhenRestricted;
+    const hidePrices = !!settings.displaySettings?.hidePricesGlobal || (isRestricted && !settings.purchaseRestrictions?.showPricesWhenRestricted);
 
     // Filter for active offers
     const specialBanners = myProducts.filter(p => p.available && isSpecialActive(p) && p.specialOffer?.highlightMode === 'banner').map(p => ({
@@ -1602,11 +1602,13 @@ export default function ClientShopScreen() {
                                                     )}
                                                     
                                                     <Text style={[styles.offerName, offer.isSpecialBanner && { color: '#444' }]}>{offer.description || 'Llevá todos los cortes con rebaja'}</Text>
-                                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 10 }}>
-                                                        <Text style={{ color: '#999', textDecorationLine: 'line-through' }}>{settings?.currency || '$'}{originalPrice.toFixed(2)}</Text>
-                                                        <Text style={{ color: offer.isSpecialBanner ? '#eab308' : businessProfile.primaryColor, fontWeight: 'bold', fontSize: 20 }}>{settings?.currency || '$'}{offer.bundlePrice.toFixed(2)}</Text>
-                                                    </View>
-                                                    <Pressable style={[styles.actionButton, offer.isSpecialBanner && { backgroundColor: '#eab308' }]} onPress={() => addComboToCart(offer)}>
+                                                    {!hidePrices && (
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, gap: 10 }}>
+                                                            <Text style={{ color: '#999', textDecorationLine: 'line-through' }}>{settings?.currency || '$'}{originalPrice.toFixed(2)}</Text>
+                                                            <Text style={{ color: offer.isSpecialBanner ? '#eab308' : businessProfile.primaryColor, fontWeight: 'bold', fontSize: 20 }}>{settings?.currency || '$'}{offer.bundlePrice.toFixed(2)}</Text>
+                                                        </View>
+                                                    )}
+                                                    <Pressable style={[styles.actionButton, offer.isSpecialBanner && { backgroundColor: '#eab308' }, hidePrices && { marginTop: 10 }]} onPress={() => addComboToCart(offer)}>
                                                         <Text style={[styles.actionButtonText, offer.isSpecialBanner && { color: '#000' }]}>{offer.isSpecialBanner ? 'Añadir Oferta' : 'Añadir Combo Entero'}</Text>
                                                     </Pressable>
                                                 </View>
@@ -1631,12 +1633,14 @@ export default function ClientShopScreen() {
                                             <Image source={{ uri: item.baseProduct.imageUrl }} style={{ width: '100%', height: 100, borderRadius: 8, marginBottom: 10 }} />
                                             <Text style={{ fontWeight: 'bold', fontSize: 15, marginBottom: 2 }} numberOfLines={1}>{item.baseProduct.name}</Text>
                                             
-                                            <View style={{ flexDirection: 'column', gap: 2, marginBottom: 15 }}>
-                                                <Text style={{ color: '#d97706', fontWeight: 'bold', fontSize: 14 }}>💵 Efe: ${item.baseProduct.dailyOfferPrice}</Text>
-                                                <Text style={{ color: '#666', fontSize: 12 }}>💳 Otros: ${item.baseProduct.price}</Text>
-                                            </View>
+                                            {!hidePrices && (
+                                                <View style={{ flexDirection: 'column', gap: 2, marginBottom: 15 }}>
+                                                    <Text style={{ color: '#d97706', fontWeight: 'bold', fontSize: 14 }}>💵 Efe: ${item.baseProduct.dailyOfferPrice}</Text>
+                                                    <Text style={{ color: '#666', fontSize: 12 }}>💳 Otros: ${item.baseProduct.price}</Text>
+                                                </View>
+                                            )}
                                             
-                                            <View style={{ alignItems: 'center' }}>
+                                            <View style={[{ alignItems: 'center' }, hidePrices && { marginTop: 10 }]}>
                                                 <QuantitySelector product={item.baseProduct} cart={cart} setCart={setCart} settings={settings} mode="button" businessProfile={businessProfile} />
                                             </View>
                                         </View>
@@ -1654,8 +1658,10 @@ export default function ClientShopScreen() {
                                         <View key={p.id} style={[styles.offerCard, { backgroundColor: '#fff', width: 200, borderWidth: 1, borderColor: '#eee', padding: 15 }]}>
                                             <Image source={{ uri: p.imageUrl }} style={{ width: '100%', height: 100, borderRadius: 8, marginBottom: 10 }} />
                                             <Text style={{ fontWeight: 'bold', fontSize: 15, marginBottom: 2 }} numberOfLines={1}>{p.name}</Text>
-                                            <Text style={{ color: businessProfile.primaryColor, fontWeight: 'bold', marginBottom: 15 }}>{settings?.currency || '$'}{p.price}/{p.unitType === 'unit' ? 'u.' : 'kg'}</Text>
-                                            <View style={{ alignItems: 'center' }}>
+                                            {!hidePrices && (
+                                                <Text style={{ color: businessProfile.primaryColor, fontWeight: 'bold', marginBottom: 15 }}>{settings?.currency || '$'}{p.price}/{p.unitType === 'unit' ? 'u.' : 'kg'}</Text>
+                                            )}
+                                            <View style={[{ alignItems: 'center' }, hidePrices && { marginTop: 10 }]}>
                                                 <QuantitySelector product={p} cart={cart} setCart={setCart} settings={settings} mode="button" businessProfile={businessProfile} />
                                             </View>
                                         </View>
