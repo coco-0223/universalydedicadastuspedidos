@@ -1,0 +1,118 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'cocobustos.93@gmail.com' ||
+        exists(/databases/$(database)/documents/superadmins/$(request.auth.token.email))
+      );
+    }
+
+    function isBusinessOwner(businessId) {
+      return isSignedIn() && (
+        request.auth.uid == businessId ||
+        (exists(/databases/$(database)/documents/businesses/$(businessId)) &&
+         get(/databases/$(database)/documents/businesses/$(businessId)).data.ownerId == request.auth.uid)
+      );
+    }
+
+    // Negocios y sus subcolecciones
+    match /businesses/{businessId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update, delete: if isSuperAdmin() || isBusinessOwner(businessId);
+
+      // Catálogo, productos, ofertas y notificaciones: lectura pública, escritura autenticada
+      match /products/{productId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+      }
+
+      match /offers/{offerId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+      }
+
+      match /catalog/{docId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+      }
+
+      match /notifications/{notifId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+      }
+
+      // Pedidos: clientes invitados pueden crear y consultar sus pedidos
+      match /orders/{orderId} {
+        allow read, create: if true;
+        allow update, delete: if isSignedIn();
+      }
+
+      // Contadores de pedidos/agenda: usados al crear pedidos
+      match /counters/{counterId} {
+        allow read, write: if true;
+      }
+
+      // Métricas de testers, calificaciones, push tokens y broadcasts
+      match /ratings/{ratingId} {
+        allow read, write: if true;
+      }
+
+      match /testers/{testerId} {
+        allow read, write: if true;
+      }
+
+      match /push_tokens/{tokenId} {
+        allow read, write: if true;
+      }
+
+      match /broadcasts/{broadcastId} {
+        allow read: if true;
+        allow write: if isSignedIn();
+      }
+    }
+
+    // Usuarios
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (request.auth.uid == userId || isSuperAdmin());
+    }
+
+    // SuperAdmins
+    match /superadmins/{email} {
+      allow read: if isSignedIn();
+      allow write: if isSuperAdmin();
+    }
+
+    // Leads / Prospectos
+    match /prospect_leads/{leadId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
+    // Solicitudes de Web/App y Plantillas WhatsApp
+    match /admin_requests/{reqId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /whatsapp_templates/{tplId} {
+      allow read, write: if isSignedIn();
+    }
+
+    // Control de IPs e intentos bloqueados en Demos
+    match /trial_ips/{ipId} {
+      allow read, write: if true;
+    }
+
+    match /blocked_attempts/{attemptId} {
+      allow read, write: if true;
+    }
+  }
+}
